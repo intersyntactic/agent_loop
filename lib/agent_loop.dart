@@ -6,11 +6,14 @@
 /// write socket; [JourneyPathChain] is one journey path's sequence of
 /// turns over it, each in a [TurnEnvelope] naming its [TurnProvenance] —
 /// a turn's [TurnId] is its journal entry hash, read back as a [TurnId],
-/// not a second name derived from it.
+/// not a second name derived from it. [ingestTeamsMessage], for an
+/// arrival the airlock witnessed, runs `is_teams_module`'s
+/// `TeamsTranslator` and appends what it returns.
 ///
-/// Not here yet: Teams arrivals, a read side, taking a turn with a model.
+/// Not here yet: a read side, taking a turn with a model.
 library;
 
 export 'src/journal_writer.dart';
 export 'src/journey_path_chain.dart';
+export 'src/teams_arrival_ingest.dart';
 export 'src/turn_envelope.dart';

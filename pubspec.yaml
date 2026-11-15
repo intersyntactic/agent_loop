@@ -9,6 +9,7 @@ environment:
   sdk: ^3.13.0
 
 dependencies:
+  is_conversation_shapes: ^0.1.2
   # The read socket (merged to main, journal#11) is in 0.5.0, which isn't
   # published to pub.dev yet (Nick's ask); pinned by commit until it is.
   is_journal:
@@ -16,7 +17,22 @@ dependencies:
       url: https://github.com/intersyntactic/journal.git
       ref: 357ce3219c2e10ebe8a91bcbebdc6e055e48e68c
   is_shapes: ^0.4.0
+  # teamsWitnessedEvent (merged to main, teams_module#19) isn't published
+  # (publish_to: none in that package); a git pin, not an override.
+  is_teams_module:
+    git:
+      url: https://github.com/intersyntactic/teams_module.git
+      ref: 3a4f31b08584250bdd2ba4a1ba266962e1342066
 
 dev_dependencies:
   lints: ^6.1.0
   test: ^1.33.0
+
+dependency_overrides:
+  # is_teams_module pins is_journal hosted; pub won't mix a git dependency
+  # and a hosted one for the same package, so the override repeats the
+  # same pin for its sake too.
+  is_journal:
+    git:
+      url: https://github.com/intersyntactic/journal.git
+      ref: 357ce3219c2e10ebe8a91bcbebdc6e055e48e68c
