@@ -16,13 +16,15 @@
 ///
 /// [ChatJourneyPaths]/[ingestIntoChat] give each Teams chat its own
 /// journey path (one chain, one [TeamsTranslator]), keyed by
-/// `TeamsConversation.id`.
+/// `TeamsConversation.id`. [rebuildChatJourneyPaths] replays the record
+/// through `caught-up` to recover one on restart, naming the `witnessed`
+/// arrivals still unhandled when history ran out.
 ///
-/// Not here yet: using the read side to recover state, taking a turn
-/// with a model.
+/// Not here yet: taking a turn with a model.
 library;
 
 export 'src/chat_journey_paths.dart';
+export 'src/chat_journey_paths_rebuild.dart';
 export 'src/journal_reader.dart';
 export 'src/journal_writer.dart';
 export 'src/journey_path_chain.dart';
