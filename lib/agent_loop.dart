@@ -10,9 +10,15 @@
 /// arrival the airlock witnessed, runs `is_teams_module`'s
 /// `TeamsTranslator` and appends what it returns.
 ///
-/// Not here yet: a read side, taking a turn with a model.
+/// [JournalReader] speaks the journal's separate read socket: `tipOf`
+/// asks a chain's tip, `follow` streams entries of given kinds from a
+/// point then live, surfacing `caught-up` as its own [FollowItem].
+///
+/// Not here yet: using the read side to recover state, taking a turn
+/// with a model.
 library;
 
+export 'src/journal_reader.dart';
 export 'src/journal_writer.dart';
 export 'src/journey_path_chain.dart';
 export 'src/teams_arrival_ingest.dart';
