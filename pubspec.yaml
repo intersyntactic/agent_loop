@@ -9,12 +9,7 @@ environment:
   sdk: ^3.13.0
 
 dependencies:
-  # The read socket (merged to main, journal#11) is in 0.5.0, which isn't
-  # published to pub.dev yet (Nick's ask); pinned by commit until it is.
-  is_journal:
-    git:
-      url: https://github.com/intersyntactic/journal.git
-      ref: 357ce3219c2e10ebe8a91bcbebdc6e055e48e68c
+  is_journal: ^0.5.0
   is_shapes: ^0.4.0
 
 dev_dependencies:
