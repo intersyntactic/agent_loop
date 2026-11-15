@@ -14,10 +14,15 @@
 /// asks a chain's tip, `follow` streams entries of given kinds from a
 /// point then live, surfacing `caught-up` as its own [FollowItem].
 ///
+/// [ChatJourneyPaths]/[ingestIntoChat] give each Teams chat its own
+/// journey path (one chain, one [TeamsTranslator]), keyed by
+/// `TeamsConversation.id`.
+///
 /// Not here yet: using the read side to recover state, taking a turn
 /// with a model.
 library;
 
+export 'src/chat_journey_paths.dart';
 export 'src/journal_reader.dart';
 export 'src/journal_writer.dart';
 export 'src/journey_path_chain.dart';
