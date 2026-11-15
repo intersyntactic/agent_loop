@@ -9,6 +9,10 @@ environment:
   sdk: ^3.13.0
 
 dependencies:
+  is_airlock:
+    git:
+      url: https://github.com/intersyntactic/airlock.git
+      ref: 062f0a7e2ae5f262b4406fdb32534b0e4746e619
   is_conversation_shapes: ^0.1.2
   # The read socket (merged to main, journal#11) is in 0.5.0, which isn't
   # published to pub.dev yet (Nick's ask); pinned by commit until it is.

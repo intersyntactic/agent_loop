@@ -18,15 +18,25 @@
 /// journey path (one chain, one [TeamsTranslator]), keyed by
 /// `TeamsConversation.id`. [rebuildChatJourneyPaths] replays the record
 /// through `caught-up` to recover one on restart, naming the `witnessed`
-/// arrivals still unhandled when history ran out.
+/// arrivals still unhandled when history ran out and every
+/// `SourceMessageId` already handled.
+///
+/// [ingestWitnessedArrival] is the one seam a witnessed arrival's bytes
+/// become a turn through, live or replayed: [WitnessedArrival.decode]
+/// reads `is_airlock`'s `{at, source, bytes}` format, it parses with
+/// `is_teams_module`'s `teamsWitnessedEvent`, and dedupes against
+/// [SeenTeamsMessages] — Teams may witness the same activity twice.
 ///
 /// Not here yet: taking a turn with a model.
 library;
 
 export 'src/chat_journey_paths.dart';
 export 'src/chat_journey_paths_rebuild.dart';
+export 'src/ingest_witnessed_arrival.dart';
 export 'src/journal_reader.dart';
 export 'src/journal_writer.dart';
 export 'src/journey_path_chain.dart';
+export 'src/seen_teams_messages.dart';
 export 'src/teams_arrival_ingest.dart';
 export 'src/turn_envelope.dart';
+export 'src/witnessed_arrival.dart';
