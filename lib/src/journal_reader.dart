@@ -139,7 +139,8 @@ final class JournalReader {
       }
       final kindsText = kinds.isEmpty ? '*' : kinds.map((k) => '$k').join(',');
       socket!.add(utf8.encode('follow $kindsText ${after?.hex ?? '-'}\n'));
-      socket!.listen(
+      late StreamSubscription<Uint8List> subscription;
+      subscription = socket!.listen(
         (chunk) {
           try {
             for (final item in parser.addChunk(chunk)) {
@@ -151,7 +152,14 @@ final class JournalReader {
               }
             }
           } on FormatException catch (e) {
+            // A bad header leaves the parser unable to find its place in
+            // the byte stream again (frames are counted, not delimited),
+            // so the stream can't continue: end it rather than let every
+            // later frame come out as a lost error forever.
             controller.addError(JournalReadRefused('$e'));
+            subscription.cancel();
+            socket!.destroy();
+            controller.close();
           }
         },
         onDone: controller.close,

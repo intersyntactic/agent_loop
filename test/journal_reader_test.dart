@@ -1,6 +1,7 @@
 // Proves JournalReader against a real JournalService's read socket, over
 // a real Unix socket, not a reimplementation of its wire protocol.
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -101,5 +102,30 @@ void main() {
     final notAnEntry = EntryHash.parse(unknown.hex)!;
     final frames = reader.follow(kinds: {kind}, after: notAnEntry);
     await expectLater(frames, emitsError(isA<JournalReadRefused>()));
+  });
+
+  test('ends the stream on a bad header, rather than losing every frame '
+      'after it', () async {
+    final socketFile = File('${tmp.path}/bad_header.sock');
+    final server = await ServerSocket.bind(
+      InternetAddress(socketFile.path, type: InternetAddressType.unix),
+      0,
+    );
+    final sub = server.listen((client) {
+      client.listen((_) {
+        client.add(utf8.encode('entry not-a-real-header\n'));
+      });
+    });
+    addTearDown(() async {
+      await sub.cancel();
+      await server.close();
+    });
+
+    final badReader = JournalReader(socketFile.path);
+    final frames = badReader.follow();
+    await expectLater(
+      frames,
+      emitsInOrder([emitsError(isA<JournalReadRefused>()), emitsDone]),
+    );
   });
 }
