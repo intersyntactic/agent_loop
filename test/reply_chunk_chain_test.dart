@@ -1,7 +1,9 @@
 // Proves ReplyChunkChain against a real JournalService over a real Unix
 // socket: a chunk appended becomes an entry chained after the one before
-// it, on its own chain, separate from any JourneyPathChain's kind, and
-// carries no envelope — the raw node is what's recorded.
+// it, on its own chain, separate from any JourneyPathChain's kind. The
+// chain's root entry carries rootedAt, so an observer can tell which path
+// an in-progress stream belongs to before it closes; every later entry
+// stays a bare node, with no envelope.
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
@@ -16,6 +18,9 @@ void main() {
   late JournalService service;
   late JournalWriter writer;
   final chunkKind = Kind.parse('chunk')!;
+  final pathTip = EntryHash.of(
+    Uint8List.fromList('a path chain tip'.codeUnits),
+  );
 
   setUp(() async {
     tmp = Directory.systemTemp.createTempSync('agent_loop_chunk_test_');
@@ -36,24 +41,42 @@ void main() {
     tmp.deleteSync(recursive: true);
   });
 
-  test('a chunk is its own entry, with no envelope', () async {
-    final chain = ReplyChunkChain(writer: writer, kind: chunkKind);
+  test('the chain\'s root entry names the path it started from', () async {
+    final chain = ReplyChunkChain(
+      writer: writer,
+      kind: chunkKind,
+      rootedAt: pathTip,
+    );
     final id = await chain.append({'shape': 'ReplyChunk', 'text': 'hel'});
 
     expect(chain.tip, id);
 
-    final entries = File('${tmp.path}/journal/entries').readAsBytesSync();
-    final last = JournalEntry.parse(
-      entries.sublist(entries.length - JournalEntry.length),
-    )!;
-    final object = service.journal.get(last.object)!;
-    final node = jsonDecodeNode(_stripHeader(object));
+    final body = _lastEntryBody(tmp, service);
+    expect(body, {
+      'node': {'shape': 'ReplyChunk', 'text': 'hel'},
+      'rootedAt': pathTip.hex,
+    });
+  });
 
-    expect(node, {'shape': 'ReplyChunk', 'text': 'hel'});
+  test('a later chunk is a bare node, no envelope', () async {
+    final chain = ReplyChunkChain(
+      writer: writer,
+      kind: chunkKind,
+      rootedAt: pathTip,
+    );
+    await chain.append({'shape': 'ReplyChunk', 'text': 'hel'});
+    final second = await chain.append({'shape': 'ReplyChunk', 'text': 'lo'});
+
+    expect(chain.tip, second);
+    expect(_lastEntryBody(tmp, service), {'shape': 'ReplyChunk', 'text': 'lo'});
   });
 
   test('a second chunk follows the first, on its own chain', () async {
-    final chain = ReplyChunkChain(writer: writer, kind: chunkKind);
+    final chain = ReplyChunkChain(
+      writer: writer,
+      kind: chunkKind,
+      rootedAt: pathTip,
+    );
     final first = await chain.append({'shape': 'ReplyChunk', 'text': 'hel'});
     final second = await chain.append({'shape': 'ReplyChunk', 'text': 'lo'});
 
@@ -62,7 +85,11 @@ void main() {
   });
 
   test('concurrent appends still follow the true tip, not race it', () async {
-    final chain = ReplyChunkChain(writer: writer, kind: chunkKind);
+    final chain = ReplyChunkChain(
+      writer: writer,
+      kind: chunkKind,
+      rootedAt: pathTip,
+    );
     final appends = await Future.wait([
       chain.append({'shape': 'ReplyChunk', 'text': 'a'}),
       chain.append({'shape': 'ReplyChunk', 'text': 'b'}),
@@ -74,9 +101,15 @@ void main() {
   });
 }
 
-/// The bytes after an entry object's own `<kind>\n<follows>\n` header,
-/// decoded as JSON: a raw node, with no turn envelope around it.
-Object? jsonDecodeNode(Uint8List bytes) => jsonDecode(utf8.decode(bytes));
+/// The last entry's body (header stripped), decoded as JSON.
+Object? _lastEntryBody(Directory tmp, JournalService service) {
+  final entries = File('${tmp.path}/journal/entries').readAsBytesSync();
+  final last = JournalEntry.parse(
+    entries.sublist(entries.length - JournalEntry.length),
+  )!;
+  final object = service.journal.get(last.object)!;
+  return jsonDecode(utf8.decode(_stripHeader(object)));
+}
 
 Uint8List _stripHeader(Uint8List object) {
   final first = object.indexOf(0x0a);

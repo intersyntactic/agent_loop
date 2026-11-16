@@ -15,7 +15,9 @@
 /// [ReplyChunkChain] is a streamed reply's own chain, separate from its
 /// journey path's: a chunk isn't a turn and gets no [TurnId], only its
 /// own entry hash (RULINGS: each chain "holds only that loop's turns;
-/// each event and the airlock's entries have chains of their own").
+/// each event and the airlock's entries have chains of their own"). Its
+/// root entry names the journey path's chain tip it started from, so an
+/// in-progress stream can be tied to a path before it closes.
 ///
 /// Not here yet: Teams arrivals, using the read side to recover state,
 /// taking a turn with a model, posting through the airlock.
