@@ -12,11 +12,17 @@
 /// asks a chain's tip, `follow` streams entries of given kinds from a
 /// point then live, surfacing `caught-up` as its own [FollowItem].
 ///
+/// [ReplyChunkChain] is a streamed reply's own chain, separate from its
+/// journey path's: a chunk isn't a turn and gets no [TurnId], only its
+/// own entry hash (RULINGS: each chain "holds only that loop's turns;
+/// each event and the airlock's entries have chains of their own").
+///
 /// Not here yet: Teams arrivals, using the read side to recover state,
-/// taking a turn with a model.
+/// taking a turn with a model, posting through the airlock.
 library;
 
 export 'src/journal_reader.dart';
 export 'src/journal_writer.dart';
 export 'src/journey_path_chain.dart';
+export 'src/reply_chunk_chain.dart';
 export 'src/turn_envelope.dart';
