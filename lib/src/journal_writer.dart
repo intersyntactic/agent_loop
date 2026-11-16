@@ -13,11 +13,13 @@ import 'package:is_journal_client/is_journal_client.dart' show EntryHash;
 import 'package:is_journal/service.dart' show Kind;
 
 /// Either the entry's fate is unknown, so resending it blindly could write
-/// it twice ([JournalUnreachable]), or nothing was added at all, so
+/// it twice ([JournalWriteUncertain]), or nothing was added at all, so
 /// resending is safe ([JournalWriteRefused]). The two must stay apart: a
 /// catcher that treats every failure as safe to resend would double an
-/// entry whenever this throws [JournalUnreachable] (found by
-/// journal-client-7e, 16 Nov, reviewing this package's own first cut).
+/// entry whenever this throws [JournalWriteUncertain] (found by
+/// journal-client-7e, 16 Nov, reviewing this package's own first cut, which
+/// named this case [JournalUnreachable] — wrong once it also covered a
+/// request the service did reach and did answer, just uncertainly).
 sealed class JournalWriteFailure implements Exception {
   const JournalWriteFailure(this.why);
 
@@ -30,8 +32,8 @@ sealed class JournalWriteFailure implements Exception {
 /// The entry may or may not be in: the socket couldn't be reached, closed
 /// before answering, answered something unreadable, or the write failed
 /// partway. Read the chain's tip before sending it again.
-final class JournalUnreachable extends JournalWriteFailure {
-  const JournalUnreachable(super.why);
+final class JournalWriteUncertain extends JournalWriteFailure {
+  const JournalWriteUncertain(super.why);
 }
 
 /// Nothing was added: the service answered `refused` outright, or named a
@@ -53,9 +55,10 @@ final class JournalWriter {
   /// starting a chain when it is null), and returns the hash the service
   /// gave it. Throws [JournalWriteRefused] if nothing was added — the tip
   /// named has moved on, or the kind isn't allowed for this sender — safe
-  /// to send again; [JournalUnreachable] if the entry's fate isn't known —
-  /// the socket couldn't be reached or closed before answering, or the
-  /// write failed partway — where resending blindly could write it twice.
+  /// to send again; [JournalWriteUncertain] if the entry's fate isn't
+  /// known — the socket couldn't be reached or closed before answering, or
+  /// the write failed partway — where resending blindly could write it
+  /// twice.
   Future<EntryHash> append(
     Kind kind,
     EntryHash? previous,
@@ -68,8 +71,8 @@ final class JournalWriter {
         'not the tip, which is ${tip.hex}',
       ),
       client.WriteRefused(:final why) => throw JournalWriteRefused(why),
-      client.WriteFailed(:final why) => throw JournalUnreachable(why),
-      client.Unanswered(:final why) => throw JournalUnreachable(why),
+      client.WriteFailed(:final why) => throw JournalWriteUncertain(why),
+      client.Unanswered(:final why) => throw JournalWriteUncertain(why),
     };
   }
 }
