@@ -18,7 +18,7 @@ import 'package:is_journal/service.dart' show Kind;
 /// catcher that treats every failure as safe to resend would double an
 /// entry whenever this throws [JournalWriteUncertain] (found by
 /// journal-client-7e, 16 Nov, reviewing this package's own first cut, which
-/// named this case [JournalUnreachable] — wrong once it also covered a
+/// named this case `JournalUnreachable` — wrong once it also covered a
 /// request the service did reach and did answer, just uncertainly).
 sealed class JournalWriteFailure implements Exception {
   const JournalWriteFailure(this.why);
