@@ -9,8 +9,8 @@
 /// not a second name derived from it.
 ///
 /// [JournalReader] speaks the journal's separate read socket: `tipOf`
-/// asks a chain's tip, `follow` streams entries of given kinds from a
-/// point then live, surfacing `caught-up` as its own [FollowItem].
+/// asks a chain's tip, `subscribe` streams entries of given kinds from a
+/// point then live, surfacing `caught-up` as its own [SubscribedItem].
 ///
 /// Not here yet: Teams arrivals, using the read side to recover state,
 /// taking a turn with a model.

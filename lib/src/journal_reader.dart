@@ -35,41 +35,42 @@ final class JournalReadRefused extends JournalReadFailure {
   const JournalReadRefused(super.why);
 }
 
-/// One item a `follow` sends: an entry ([JournalEntryFrame]), or the
+/// One item a `subscribe` sends: an entry ([JournalEntryFrame]), or the
 /// marker between its backlog and its live entries ([CaughtUp]).
-sealed class FollowItem {
-  const FollowItem();
+sealed class SubscribedItem {
+  const SubscribedItem();
 }
 
-/// Marks where a `follow`'s backlog ended: [head] is the journal's last
+/// Marks where a `subscribe`'s backlog ended: [head] is the journal's last
 /// entry of any kind at that point (null for an empty journal) — a valid
-/// point to [JournalReader.follow] from next time, whether or not
-/// anything of that follow's own kinds came after it. Sent once, between
-/// entries, in the same synchronous step as the switch to live ones.
-final class CaughtUp extends FollowItem {
+/// point to [JournalReader.subscribe] from next time, whether or not
+/// anything of that subscription's own kinds came after it. Sent once,
+/// between entries, in the same synchronous step as the switch to live
+/// ones.
+final class CaughtUp extends SubscribedItem {
   const CaughtUp(this.head);
 
   final EntryHash? head;
 }
 
-/// One entry as the read socket sends it: its hash, kind, what it follows,
-/// and its object bytes exactly as recorded — the `<kind>\n<follows>\n`
-/// header included, the same bytes [EntryHash.of] hashes and
-/// `JournalWriter.append` wrote.
-final class JournalEntryFrame extends FollowItem {
+/// One entry as the read socket sends it: its hash, kind, the entry before
+/// it in its chain, and its object bytes exactly as recorded — the
+/// `<kind>\n<previous>\n` header included, the same bytes [EntryHash.of]
+/// hashes and `JournalWriter.append` wrote.
+final class JournalEntryFrame extends SubscribedItem {
   const JournalEntryFrame({
     required this.hash,
     required this.kind,
-    required this.follows,
+    required this.previous,
     required this.bytes,
   });
 
   final EntryHash hash;
   final Kind kind;
-  final EntryHash? follows;
+  final EntryHash? previous;
   final Uint8List bytes;
 
-  /// [bytes] without the `<kind>\n<follows>\n` header: what was passed to
+  /// [bytes] without the `<kind>\n<previous>\n` header: what was passed to
   /// [JournalWriter.append] as `rest`.
   Uint8List get body {
     final first = bytes.indexOf(0x0a);
@@ -124,8 +125,11 @@ final class JournalReader {
   /// cancelled. Errors with [JournalReadUnreachable] if the socket can't
   /// be reached, [JournalReadRefused] if [after] names no entry the
   /// service knows.
-  Stream<FollowItem> follow({Set<Kind> kinds = const {}, EntryHash? after}) {
-    late StreamController<FollowItem> controller;
+  Stream<SubscribedItem> subscribe({
+    Set<Kind> kinds = const {},
+    EntryHash? after,
+  }) {
+    late StreamController<SubscribedItem> controller;
     Socket? socket;
     final parser = _FrameParser();
 
@@ -138,14 +142,16 @@ final class JournalReader {
         return;
       }
       final kindsText = kinds.isEmpty ? '*' : kinds.map((k) => '$k').join(',');
-      socket!.add(utf8.encode('follow $kindsText ${after?.hex ?? '-'}\n'));
+      socket!.add(
+        utf8.encode('subscribe $kindsText from ${after?.hex ?? 'start'}\n'),
+      );
       late StreamSubscription<Uint8List> subscription;
       subscription = socket!.listen(
         (chunk) {
           try {
             for (final item in parser.addChunk(chunk)) {
               switch (item) {
-                case FollowItem item:
+                case SubscribedItem item:
                   controller.add(item);
                 case String refusal:
                   controller.addError(JournalReadRefused(_refusalOf(refusal)));
@@ -169,7 +175,7 @@ final class JournalReader {
       );
     }
 
-    controller = StreamController<FollowItem>(
+    controller = StreamController<SubscribedItem>(
       onListen: start,
       onCancel: () => socket?.destroy(),
     );
@@ -197,7 +203,7 @@ final class JournalReader {
 }
 
 /// Parses the read socket's own framing from raw chunks: a header line
-/// (`entry <hash> <kind> <follows> <length>`, `caught-up <head>`, or a
+/// (`entry <hash> <kind> <previous> <length>`, `caught-up <head>`, or a
 /// bare `refused ...`), then, for an entry, exactly `<length>` more bytes
 /// — never split on lines, since a body need not end in one and may hold
 /// one of its own.
@@ -215,7 +221,7 @@ final class _FrameParser {
         _buf.removeRange(0, nl + 1);
         if (line.startsWith('caught-up ')) {
           final head = line.substring('caught-up '.length);
-          yield CaughtUp(head == '-' ? null : EntryHash.parse(head));
+          yield CaughtUp(head == 'start' ? null : EntryHash.parse(head));
           continue;
         }
         if (!line.startsWith('entry ')) {
@@ -232,7 +238,7 @@ final class _FrameParser {
       yield JournalEntryFrame(
         hash: pending.hash,
         kind: pending.kind,
-        follows: pending.follows,
+        previous: pending.previous,
         bytes: bytes,
       );
     }
@@ -240,11 +246,11 @@ final class _FrameParser {
 }
 
 final class _PendingHeader {
-  const _PendingHeader(this.hash, this.kind, this.follows, this.length);
+  const _PendingHeader(this.hash, this.kind, this.previous, this.length);
 
   final EntryHash hash;
   final Kind kind;
-  final EntryHash? follows;
+  final EntryHash? previous;
   final int length;
 
   static _PendingHeader parse(String line) {
@@ -254,11 +260,11 @@ final class _PendingHeader {
     final kind = words[2] == Kind.started.name
         ? Kind.started
         : Kind.parse(words[2]);
-    final follows = words[3] == '-' ? null : EntryHash.parse(words[3]);
+    final previous = words[3] == '-' ? null : EntryHash.parse(words[3]);
     final length = int.tryParse(words[4]);
     if (hash == null || kind == null || length == null) {
       throw FormatException('not an entry frame: $line');
     }
-    return _PendingHeader(hash, kind, follows, length);
+    return _PendingHeader(hash, kind, previous, length);
   }
 }
