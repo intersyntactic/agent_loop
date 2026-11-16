@@ -24,5 +24,6 @@ library;
 export 'src/journal_reader.dart';
 export 'src/journal_writer.dart';
 export 'src/journey_path_chain.dart';
+export 'src/post_reply.dart';
 export 'src/reply_chunk_chain.dart';
 export 'src/turn_envelope.dart';
