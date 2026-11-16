@@ -4,21 +4,15 @@
 /// others by hash"). A chunk isn't a turn and has no [TurnId]: the turn that
 /// closes a streamed reply names this chain's tip by hash instead.
 ///
-/// The chain's first entry carries [rootedAt], the journey path's own
-/// chain's tip at the moment streaming started: nothing else ties an
-/// unfinished chunk chain to a path. Without it, a reply cut short by a
-/// restart is never tied to any path in the record, and anything showing a
-/// stream live (loop_launcher's router, the app) can't tell which
-/// conversation a chunk belongs to until the chain closes (found by
-/// loop-launcher-5b, 16 Nov).
-///
-/// [rootedAt] is not yet enforced: the journal checks who sent an entry and
-/// what it follows, never what a body claims, so another loop user could
-/// name this path's tip as their own chain's root today. A reader must not
-/// trust it for anything but display until the journal's chain-ownership
-/// check (journal task 50, journal-0f designing, 16 Nov) covers it — and
-/// when it does, the wire shape here may change to whatever that check
-/// needs to read without parsing JSON.
+/// The chain's first entry is an attached root (is_journal 0.8.0,
+/// journal-0f, 16 Nov): its body's first line names [parent], the journey
+/// path's own chain's tip at the moment streaming started, as 64 lowercase
+/// hex characters and a newline, before the node that follows. The journal
+/// checks that [parent] is on an entry its sender owns and gives this
+/// chain to the same path, refusing otherwise (`no-parent`, `unknown
+/// (hash)`, `parent-unowned`, `not-owner`) — enforced by the service, not
+/// trusted from a body's own claim, unlike the JSON-embedded field this
+/// replaced.
 library;
 
 import 'dart:async';
@@ -38,18 +32,20 @@ final class ReplyChunkChain {
   ReplyChunkChain({
     required this.writer,
     required this.kind,
-    required this.rootedAt,
+    required this.parent,
   });
 
   /// Where this chain's entries are sent.
   final JournalWriter writer;
 
-  /// The kind every entry of this chain is sent as.
+  /// The kind every entry of this chain is sent as. Must be registered as
+  /// an attaching kind (`started`'s body) for the journal to treat this
+  /// chain's root as attached rather than refusing it as ownerless.
   final Kind kind;
 
-  /// The journey path's own chain's tip when this reply started streaming,
-  /// named by hash in this chain's first entry.
-  final EntryHash rootedAt;
+  /// The journey path's own chain's tip when this reply started streaming:
+  /// the entry this chain's root attaches to.
+  final EntryHash parent;
 
   EntryHash? _tip;
   Future<void> _queue = Future.value();
@@ -66,14 +62,13 @@ final class ReplyChunkChain {
   }
 
   Future<EntryHash> _appendOne(Map<String, Object?> node) async {
-    // Only the chain's root entry needs rootedAt, so only it gets wrapped;
-    // every later entry stays a bare node, the same as before this chain
-    // had a root to carry. Keeping provenance-like facts off the node
-    // itself matches TurnEnvelope's own reason to exist (RULINGS: "where a
-    // turn came from goes in the loop's envelope around the node, never in
-    // the node's shape").
-    final body = _tip == null ? {'node': node, 'rootedAt': rootedAt.hex} : node;
-    final bytes = Uint8List.fromList(utf8.encode(jsonEncode(body)));
+    final nodeBytes = utf8.encode(jsonEncode(node));
+    // Only the chain's root names a parent, as the body's first line; a
+    // later entry chains onto the root by `previous` instead, the same as
+    // any other entry.
+    final bytes = _tip == null
+        ? Uint8List.fromList([...ascii.encode('${parent.hex}\n'), ...nodeBytes])
+        : Uint8List.fromList(nodeBytes);
     final entry = await writer.append(kind, _tip, bytes);
     _tip = entry;
     return entry;
