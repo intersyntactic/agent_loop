@@ -83,7 +83,7 @@ void main() {
   });
 }
 
-/// The bytes after an entry object's own `<kind>\n<follows>\n` header.
+/// The bytes after an entry object's own `<kind>\n<previous>\n` header.
 Uint8List _stripHeader(Uint8List object) {
   final first = object.indexOf(0x0a);
   final second = object.indexOf(0x0a, first + 1);

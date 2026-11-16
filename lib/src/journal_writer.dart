@@ -1,7 +1,7 @@
 /// A client for the journal service's writer, over its Unix socket
 /// (`package:is_journal/service.dart`'s `JournalService`): one connection,
-/// one request — a kind, the entry it follows, and its bytes — one line
-/// back.
+/// one request — a kind, the entry before it in its chain, and its bytes
+/// — one line back.
 library;
 
 import 'dart:async';
@@ -41,15 +41,15 @@ final class JournalWriter {
 
   final String socketPath;
 
-  /// Sends [rest] as an entry of [kind], following [follows] (or starting
-  /// a chain when it is null), and returns the hash the service gave it.
-  /// Throws [JournalUnreachable] if the socket can't be reached or closes
-  /// before answering, [JournalWriteRefused] if the service refuses the
-  /// entry — the tip named has moved on, the kind isn't allowed for this
-  /// sender, or anything else it answers `refused` to.
+  /// Sends [rest] as an entry of [kind], after [previous] in its chain (or
+  /// starting a chain when it is null), and returns the hash the service
+  /// gave it. Throws [JournalUnreachable] if the socket can't be reached
+  /// or closes before answering, [JournalWriteRefused] if the service
+  /// refuses the entry — the tip named has moved on, the kind isn't
+  /// allowed for this sender, or anything else it answers `refused` to.
   Future<EntryHash> append(
     Kind kind,
-    EntryHash? follows,
+    EntryHash? previous,
     Uint8List rest,
   ) async {
     final Socket socket;
@@ -62,7 +62,7 @@ final class JournalWriter {
       throw JournalUnreachable('$e');
     }
     try {
-      final header = '$kind\n${follows?.hex ?? '-'}\n';
+      final header = '$kind\n${previous?.hex ?? '-'}\n';
       socket.add(utf8.encode(header));
       socket.add(rest);
       await socket.close();

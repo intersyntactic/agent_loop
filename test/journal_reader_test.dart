@@ -38,19 +38,19 @@ void main() {
     tmp.deleteSync(recursive: true);
   });
 
-  test('follows a kind from the start, then as entries come', () async {
+  test('subscribes to a kind from the start, then as entries come', () async {
     final a = await writer.append(
       kind,
       null,
       Uint8List.fromList('a'.codeUnits),
     );
-    final frames = StreamIterator(reader.follow(kinds: {kind}));
+    final frames = StreamIterator(reader.subscribe(kinds: {kind}));
 
     expect(await frames.moveNext(), isTrue);
     final first = frames.current as JournalEntryFrame;
     expect(first.hash, a);
     expect(first.kind, kind);
-    expect(first.follows, isNull);
+    expect(first.previous, isNull);
     expect(String.fromCharCodes(first.body), 'a');
 
     // The backlog (just `a`) ends here, before anything live.
@@ -61,7 +61,7 @@ void main() {
     expect(await frames.moveNext(), isTrue);
     final second = frames.current as JournalEntryFrame;
     expect(second.hash, b);
-    expect(second.follows, a);
+    expect(second.previous, a);
     expect(String.fromCharCodes(second.body), 'b');
 
     await frames.cancel();
@@ -74,7 +74,7 @@ void main() {
       Uint8List.fromList('a'.codeUnits),
     );
     final b = await writer.append(kind, a, Uint8List.fromList('b'.codeUnits));
-    final frames = StreamIterator(reader.follow(kinds: {kind}, after: a));
+    final frames = StreamIterator(reader.subscribe(kinds: {kind}, after: a));
 
     expect(await frames.moveNext(), isTrue);
     expect((frames.current as JournalEntryFrame).hash, b);
@@ -97,10 +97,10 @@ void main() {
     expect(() => reader.tipOf(notAChain), throwsA(isA<JournalReadRefused>()));
   });
 
-  test('refuses an unknown starting point for follow', () async {
+  test('refuses an unknown starting point for subscribe', () async {
     final unknown = ObjectId.of(Uint8List.fromList('nothing'.codeUnits));
     final notAnEntry = EntryHash.parse(unknown.hex)!;
-    final frames = reader.follow(kinds: {kind}, after: notAnEntry);
+    final frames = reader.subscribe(kinds: {kind}, after: notAnEntry);
     await expectLater(frames, emitsError(isA<JournalReadRefused>()));
   });
 
@@ -122,7 +122,7 @@ void main() {
     });
 
     final badReader = JournalReader(socketFile.path);
-    final frames = badReader.follow();
+    final frames = badReader.subscribe();
     await expectLater(
       frames,
       emitsInOrder([emitsError(isA<JournalReadRefused>()), emitsDone]),
