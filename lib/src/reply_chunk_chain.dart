@@ -11,6 +11,14 @@
 /// stream live (loop_launcher's router, the app) can't tell which
 /// conversation a chunk belongs to until the chain closes (found by
 /// loop-launcher-5b, 16 Nov).
+///
+/// [rootedAt] is not yet enforced: the journal checks who sent an entry and
+/// what it follows, never what a body claims, so another loop user could
+/// name this path's tip as their own chain's root today. A reader must not
+/// trust it for anything but display until the journal's chain-ownership
+/// check (journal task 50, journal-0f designing, 16 Nov) covers it — and
+/// when it does, the wire shape here may change to whatever that check
+/// needs to read without parsing JSON.
 library;
 
 import 'dart:async';
