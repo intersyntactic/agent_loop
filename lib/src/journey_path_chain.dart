@@ -46,18 +46,26 @@ final class JourneyPathChain {
   /// Appends [node] after the current tip, in an envelope naming
   /// [provenance], and returns its [TurnId].
   Future<TurnId> append(Map<String, Object?> node, TurnProvenance provenance) {
-    final result = _queue.then((_) => _appendOne(node, provenance));
+    final envelope = TurnEnvelope(node: node, provenance: provenance);
+    return appendEntry(
+      kind,
+      envelope.encode(),
+    ).then((entry) => TurnId.parse(entry.hex)!);
+  }
+
+  /// Appends [bytes] after the current tip, as an entry of [entryKind]
+  /// rather than this chain's own [kind] — a model request and its pieces,
+  /// for instance, share this chain's tip without being turns themselves.
+  /// Returns the new entry's hash.
+  Future<EntryHash> appendEntry(Kind entryKind, List<int> bytes) {
+    final result = _queue.then((_) => _appendEntryOne(entryKind, bytes));
     _queue = result.then((_) {}, onError: (_) {});
     return result;
   }
 
-  Future<TurnId> _appendOne(
-    Map<String, Object?> node,
-    TurnProvenance provenance,
-  ) async {
-    final envelope = TurnEnvelope(node: node, provenance: provenance);
-    final entry = await writer.append(kind, _tip, envelope.encode());
+  Future<EntryHash> _appendEntryOne(Kind entryKind, List<int> bytes) async {
+    final entry = await writer.append(entryKind, _tip, bytes);
     _tip = entry;
-    return TurnId.parse(entry.hex)!;
+    return entry;
   }
 }

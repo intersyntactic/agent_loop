@@ -9,10 +9,16 @@ environment:
   sdk: ^3.13.0
 
 dependencies:
+  is_content_id: ^0.2.0
   is_journal: ^0.8.0
   is_journal_client: ^0.1.1
-  is_shapes: ^0.4.0
+  is_shapes: ^0.5.0
+  is_airlock_api:
+    git:
+      url: https://github.com/intersyntactic/airlock_api.git
+      ref: model-request-entry
 
 dev_dependencies:
+  is_effects: ^0.6.0
   lints: ^6.1.0
   test: ^1.33.0

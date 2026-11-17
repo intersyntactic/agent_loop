@@ -19,12 +19,18 @@
 /// root entry names the journey path's chain tip it started from, so an
 /// in-progress stream can be tied to a path before it closes.
 ///
+/// [recordModelRequest] is the write side of a model call as an action
+/// (RULINGS: "what a step sends is in the airlock's record"): it records
+/// the exact rendered body as pieces, then a request naming them, before
+/// the airlock ever sees it.
+///
 /// Not here yet: Teams arrivals, using the read side to recover state,
-/// taking a turn with a model, posting through the airlock.
+/// rendering a request body from the chain, taking a turn with a model.
 library;
 
 export 'src/journal_reader.dart';
 export 'src/journal_writer.dart';
 export 'src/journey_path_chain.dart';
+export 'src/model_request_recorder.dart';
 export 'src/reply_chunk_chain.dart';
 export 'src/turn_envelope.dart';
