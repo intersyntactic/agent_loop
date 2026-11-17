@@ -16,7 +16,7 @@ dependencies:
   is_airlock_api:
     git:
       url: https://github.com/intersyntactic/airlock_api.git
-      ref: main
+      ref: 7c2dd9391c363d2264ddb81cb80fc80981bd82ff
 
 dev_dependencies:
   is_effects: ^0.7.0
