@@ -1,5 +1,5 @@
 /// The feed of [ReturnedResult]s a [TrajectoryCrux] waits on: every
-/// [resultOfActionOrWhyRefusedKind] entry loop_launcher's own feed hands
+/// [outcomeOfProposedActionKind] entry loop_launcher's own feed hands
 /// this loop, decoded once.
 ///
 /// Built with [Stream.expand] rather than `async*`, for the same reason as
@@ -10,7 +10,7 @@ library;
 import 'dart:convert' show jsonDecode, utf8;
 
 import 'package:is_airlock_api/is_airlock_api.dart'
-    show readResultOfActionOrWhyRefused, resultOfActionOrWhyRefusedKind;
+    show outcomeOfProposedActionKind, readOutcomeOfProposedAction;
 import 'package:is_logbook/service.dart' show Kind;
 import 'package:is_logbook_client/is_logbook_client.dart'
     show Entry, LogbookReader;
@@ -18,10 +18,10 @@ import 'package:is_shapes/is_shapes.dart' show EntryId;
 
 import 'trajectory_crux.dart';
 
-final _resultKind = Kind.parse(resultOfActionOrWhyRefusedKind)!;
+final _resultKind = Kind.parse(outcomeOfProposedActionKind)!;
 
-/// Every [resultOfActionOrWhyRefusedKind] entry [reader] is fed, decoded
-/// through [readResultOfActionOrWhyRefused], with the entry's own id
+/// Every [outcomeOfProposedActionKind] entry [reader] is fed, decoded
+/// through [readOutcomeOfProposedAction], with the entry's own id
 /// alongside (a logbook [ObjectId], read back as the [EntryId] a later
 /// proposal's `drawnFrom` names, the same hex round trip
 /// [recordModelRequestOnTrajectory]'s callers use); an entry whose body is
@@ -36,7 +36,7 @@ Stream<ReturnedResult> followResults(LogbookReader reader) =>
       } on FormatException {
         return const [];
       }
-      final decoded = readResultOfActionOrWhyRefused(json);
+      final decoded = readOutcomeOfProposedAction(json);
       return decoded == null
           ? const []
           : [

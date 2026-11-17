@@ -4,7 +4,7 @@
 /// confirmed this is agent_loop's job, not a separate caller's). Proposes
 /// an action by writing an [ActionProposedByAgentLoop] entry on the
 /// trajectory's own chain, then waits for the airlock's
-/// [resultOfActionOrWhyRefusedKind] entry naming it, and gives back its
+/// `outcomeOfProposedActionKind` entry naming it, and gives back its
 /// result.
 ///
 /// Confirmed against airlock-api-04 directly, not guessed from the source
@@ -26,9 +26,9 @@ import 'trajectory_chain.dart';
 
 final _proposedKind = Kind.parse(ActionProposedByAgentLoop.kind)!;
 
-/// One [resultOfActionOrWhyRefusedKind] entry, read back: its own id in the
-/// logbook, [readResultOfActionOrWhyRefused]'s shape for what it holds,
-/// built by whoever follows the loop's feed of them (see [followResults] in
+/// One `outcomeOfProposedActionKind` entry, read back: its own id in the
+/// logbook, `readOutcomeOfProposedAction`'s shape for what it holds, built
+/// by whoever follows the loop's feed of them (see [followResults] in
 /// bin/agent_loop.dart's package, which builds one from a live
 /// [LogbookReader] subscription).
 typedef ReturnedResult = ({EntryId proposed, EntryId resultEntry, Object? result});

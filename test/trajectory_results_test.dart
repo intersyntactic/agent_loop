@@ -1,7 +1,7 @@
-// Proves followResults against a real LogbookService: a
-// result-of-action-or-why-refused entry decodes into its ReturnedResult,
-// and a body of some other shape under the same kind is skipped rather
-// than thrown.
+// Proves followResults against a real LogbookService: an
+// outcome-of-proposed-action entry decodes into its ReturnedResult, and a
+// body of some other shape under the same kind is skipped rather than
+// thrown.
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
@@ -18,13 +18,13 @@ void main() {
   late LogbookService service;
   late client.LogbookWriter writer;
   late client.LogbookReader reader;
-  final resultKind = Kind.parse('result-of-action-or-why-refused')!;
+  final resultKind = Kind.parse('outcome-of-proposed-action')!;
 
   setUp(() async {
     tmp = Directory.systemTemp.createTempSync('agent_loop_results_test_');
     final uid = Process.runSync('id', ['-u']).stdout.toString().trim();
     final senderTable = SenderTable.parse(
-      Uint8List.fromList('$uid result-of-action-or-why-refused\n'.codeUnits),
+      Uint8List.fromList('$uid outcome-of-proposed-action\n'.codeUnits),
     );
     service = await LogbookService.start(
       Logbook.open(Directory('${tmp.path}/logbook'))!,
