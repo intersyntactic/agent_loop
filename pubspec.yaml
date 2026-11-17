@@ -13,10 +13,7 @@ dependencies:
   is_journal: ^0.8.0
   is_journal_client: ^0.1.1
   is_shapes: ^0.5.0
-  is_airlock_api:
-    git:
-      url: https://github.com/intersyntactic/airlock_api.git
-      ref: 7c2dd9391c363d2264ddb81cb80fc80981bd82ff
+  is_airlock_api: ^0.8.0
 
 dev_dependencies:
   is_effects: ^0.7.0
