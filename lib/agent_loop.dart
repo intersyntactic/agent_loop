@@ -26,14 +26,27 @@
 /// the read side, and [renderRequestBody] flattens them into the one
 /// plain-text body `claude -p` takes.
 ///
+/// [TrajectoryChain], [findTrajectoryRoot] and [followTrajectory] are the
+/// same shape as [JourneyPathChain]/[JournalReader], but for the logbook
+/// (the live record service, `is_logbook` — journal and logbook speak
+/// different wires, so the two sets stay separate until agent_loop's own
+/// naming catches up with the mission/trajectory rename, task 23).
+/// [recordModelRequestOnTrajectory] is [recordModelRequest] for that chain.
+///
 /// Not here yet: Teams arrivals, using the read side to recover state,
-/// taking a turn with a model.
+/// taking a turn with a model (bin/agent_loop.dart stops at the record,
+/// same as recordModelRequest always has — who reaches the crux is task
+/// 10, Nick's call).
 library;
 
 export 'src/journal_reader.dart';
 export 'src/journal_writer.dart';
 export 'src/journey_path_chain.dart';
+export 'src/logbook_writer.dart';
 export 'src/model_request_recorder.dart';
 export 'src/model_request_render.dart';
 export 'src/reply_chunk_chain.dart';
+export 'src/trajectory_chain.dart';
+export 'src/trajectory_crux.dart';
+export 'src/trajectory_model_request.dart';
 export 'src/turn_envelope.dart';
