@@ -73,8 +73,12 @@ final class TrajectoryCrux implements ProposesActionsThroughTheRecord {
   @override
   Future<Object?> propose(Object? proposal) async {
     final bytes = Uint8List.fromList(utf8.encode(jsonEncode(proposal)));
-    final id = EntryId.of(bytes);
-    await chain.appendEntry(_proposedKind, bytes);
+    final written = await chain.appendEntry(_proposedKind, bytes);
+    // The airlock names a proposal by the logbook entry's own id (the
+    // kind line, the previous line, then the body) — not a hash of the
+    // body alone, which carries no trace of where it landed on the
+    // chain and so never matches.
+    final id = EntryId.parse(written.hex)!;
     stdout.writeln(
       'agent_loop: proposal ${id.hex} appended, awaiting its result',
     );

@@ -1,9 +1,9 @@
 // Proves TrajectoryCrux against a real LogbookService for the write side
 // (the action-proposed-by-agent-loop entry it writes), and a fake
-// `returned` stream for the match-by-EntryId-of-raw-bytes rule
-// airlock-api-04 confirmed directly (2026-11-18): not the EntryHash a
-// write's `ok` gives back, which depends on chain position and so would
-// never match.
+// `returned` stream matching by the logbook's own entry id, the way the
+// airlock actually names a proposal — not a hash of the proposal's raw
+// bytes alone, which carries no trace of where it landed on the chain
+// and so would never match.
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -43,70 +43,70 @@ void main() {
     tmp.deleteSync(recursive: true);
   });
 
-  test('writes the proposal, then returns the outcome of the matching '
-      'returned entry, by EntryId of the raw proposal bytes', () async {
-    final root = await client.LogbookWriter('${tmp.path}/logbook.sock')
-        .write(turnKind, utf8.encode('root'));
-    final rootHash = (root as client.Written).entry;
+  test(
+    'writes the proposal, then returns the outcome of the matching '
+    'returned entry, by the id the logbook assigned the written entry',
+    () async {
+      final root = await client.LogbookWriter('${tmp.path}/logbook.sock')
+          .write(turnKind, utf8.encode('root'));
+      final rootHash = (root as client.Written).entry;
 
-    final chain = TrajectoryChain(
-      writer: LogbookWriter('${tmp.path}/logbook.sock'),
-      kind: turnKind,
-      tip: rootHash,
-    );
+      final chain = TrajectoryChain(
+        writer: LogbookWriter('${tmp.path}/logbook.sock'),
+        kind: turnKind,
+        tip: rootHash,
+      );
 
-    final returnedController = StreamController<ReturnedResult>();
-    final crux = TrajectoryCrux(
-      chain: chain,
-      returned: returnedController.stream,
-    );
+      final returnedController = StreamController<ReturnedResult>();
+      final crux = TrajectoryCrux(
+        chain: chain,
+        returned: returnedController.stream,
+      );
 
-    final proposal = {'place': 1, 'program': 'model', 'input': 'x'};
+      final proposal = {'place': 1, 'program': 'model', 'input': 'x'};
+      final writtenBytes = utf8.encode(jsonEncode(proposal));
 
-    // A returned entry for a DIFFERENT proposal, which must be ignored,
-    // then the matching one.
-    final wrongId = EntryId.of(utf8.encode(jsonEncode({'other': true})));
-    final wrongResultEntry = EntryId.of(utf8.encode('wrong-result-entry'));
-    returnedController.add((
-      proposed: wrongId,
-      resultEntry: wrongResultEntry,
-      result: {'kind': 'refused', 'why': 'not this one'},
-    ));
+      // A returned entry for a DIFFERENT proposal, which must be ignored,
+      // then the matching one.
+      final wrongId = EntryId.of(utf8.encode(jsonEncode({'other': true})));
+      final wrongResultEntry = EntryId.of(utf8.encode('wrong-result-entry'));
+      returnedController.add((
+        proposed: wrongId,
+        resultEntry: wrongResultEntry,
+        result: {'kind': 'refused', 'why': 'not this one'},
+      ));
 
-    final outcomeFuture = crux.propose(proposal);
+      // Started before propose, so it can't miss the entry; awaited after,
+      // so it names the fake result by the id the logbook actually assigns
+      // the written entry, not a hash of its body.
+      final writtenEntryFuture = LogbookReader('${tmp.path}/logbook.read.sock')
+          .subscribe(kinds: {proposedKind})
+          .firstWhere((item) => item is Entry);
 
-    final writtenBytes = utf8.encode(jsonEncode(proposal));
-    final id = EntryId.of(writtenBytes);
-    final resultEntry = EntryId.of(utf8.encode('the-matching-result-entry'));
-    await Future<void>.delayed(const Duration(milliseconds: 50));
-    returnedController.add((
-      proposed: id,
-      resultEntry: resultEntry,
-      result: {'kind': 'ran', 'output': 'ok'},
-    ));
+      final outcomeFuture = crux.propose(proposal);
 
-    final outcome = await outcomeFuture;
-    expect(outcome, {'kind': 'ran', 'output': 'ok'});
+      final writtenEntry = await writtenEntryFuture as Entry;
+      final id = EntryId.parse(writtenEntry.id.hex)!;
+      final resultEntry = EntryId.of(utf8.encode('the-matching-result-entry'));
+      returnedController.add((
+        proposed: id,
+        resultEntry: resultEntry,
+        result: {'kind': 'ran', 'output': 'ok'},
+      ));
 
-    // The result entry's own id is reachable by the proposal's place, not
-    // by the wrong proposal's, and only once.
-    expect(crux.resultEntryAt(1), resultEntry);
-    expect(crux.resultEntryAt(1), isNull);
+      final outcome = await outcomeFuture;
+      expect(outcome, {'kind': 'ran', 'output': 'ok'});
 
-    // The proposed entry really landed on the chain, after root.
-    final entries = <Entry>[];
-    final sub = LogbookReader('${tmp.path}/logbook.read.sock')
-        .subscribe(kinds: {proposedKind})
-        .listen((item) {
-          if (item is Entry) entries.add(item);
-        });
-    await Future<void>.delayed(const Duration(milliseconds: 100));
-    await sub.cancel();
+      // The result entry's own id is reachable by the proposal's place, not
+      // by the wrong proposal's, and only once.
+      expect(crux.resultEntryAt(1), resultEntry);
+      expect(crux.resultEntryAt(1), isNull);
 
-    expect(entries, hasLength(1));
-    expect(entries.single.previous, rootHash);
-    expect(entries.single.body, writtenBytes);
+      // The proposed entry really landed on the chain, after root.
+      expect(writtenEntry.previous, rootHash);
+      expect(writtenEntry.body, writtenBytes);
 
-    await returnedController.close();
-  });
+      await returnedController.close();
+    },
+  );
 }
