@@ -39,7 +39,7 @@ void main() {
     tmp.deleteSync(recursive: true);
   });
 
-  test('the request names the piece it wrote, and joins back to it', () async {
+  test('the request names each half\'s piece, and joins back to it', () async {
     final chain = JourneyPathChain(writer: writer, kind: kind);
     final turn = await chain.append({
       'shape': 'Note',
@@ -48,7 +48,8 @@ void main() {
 
     final requestEntry = await recordModelRequest(
       chain,
-      body: 'the exact rendered body',
+      systemPrompt: 'the exact rendered system prompt',
+      request: 'the exact rendered request',
       builtFrom: [EntryHash.parse(turn.entry.hex)!],
     );
 
@@ -65,16 +66,21 @@ void main() {
       _decodeJson(_stripHeader(requestObject)),
     );
 
-    final pieceEntry = request.pieces.single;
-    final pieceBytes = service.journal.get(
-      _findEntryObject(entries, pieceEntry),
-    )!;
-    final piece = ModelRequestPiece.fromJson(
-      _decodeJson(_stripHeader(pieceBytes)),
-    );
+    String textOf(RecordedText text) {
+      final pieceBytes = service.journal.get(
+        _findEntryObject(entries, text.pieces.single),
+      )!;
+      return ModelRequestPiece.fromJson(_decodeJson(_stripHeader(pieceBytes)))
+          .text;
+    }
 
-    expect(piece.text, 'the exact rendered body');
-    expect(request.join([piece.text]), isA<Ran<String>>());
+    final systemPromptText = textOf(request.systemPrompt);
+    final requestText = textOf(request.request);
+
+    expect(systemPromptText, 'the exact rendered system prompt');
+    expect(requestText, 'the exact rendered request');
+    expect(request.systemPrompt.join([systemPromptText]), isA<Ran<String>>());
+    expect(request.request.join([requestText]), isA<Ran<String>>());
     expect(request.builtFrom.single.hex, turn.entry.hex);
   });
 }
