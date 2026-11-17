@@ -3,6 +3,7 @@
 // entry (built with is_docking_station's own encodeDecision, not
 // hand-written JSON) interleaves correctly with the loop's own turns, in
 // logbook order, and renders the same as the old UserSaid-turn path did.
+import 'dart:convert' show utf8;
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -31,7 +32,7 @@ void main() {
     final senderTable = SenderTable.parse(
       Uint8List.fromList(
         '$uid turn users-assigned-to-trajectory '
-                'event-admitted-to-mission\n'
+                'event-admitted-to-mission event\n'
             .codeUnits,
       ),
     );
@@ -63,11 +64,18 @@ void main() {
     );
     final root = (rootResult as client.Written).entry;
 
+    // The relay's own raw event, written before the admission that names
+    // it, as loop_launcher's feed now delivers it.
+    final eventKind = Kind.parse('event')!;
+    final rawEventBody = utf8.encode('{"type":"message"}');
+    final rawEventResult = await rawWriter.write(
+      eventKind,
+      Uint8List.fromList(rawEventBody),
+    );
+    final rawEventEntry = (rawEventResult as client.Written).entry;
+
     // The admission that admits the user's message, exactly as the
     // docking station would encode it.
-    final rawEventEntry = client.ObjectId.of(
-      Uint8List.fromList('event'.codeUnits),
-    );
     final admission = EventAdmittedToMission(
       rawEventEntry,
       by: DecidedBy.rules,
@@ -118,7 +126,8 @@ void main() {
       (found[0] as SaidByUser).address,
       AddressInExternalSystem.parse('teams:c1'),
     );
-    expect((found[0] as SaidByUser).rawEventEntry, rawEventEntry);
+    expect((found[0] as SaidByUser).rawEvent?.id, rawEventEntry);
+    expect((found[0] as SaidByUser).rawEvent?.body, rawEventBody);
     expect(found[1], isA<TurnOnChain>());
     expect((found[1] as TurnOnChain).hash, turnHash);
 

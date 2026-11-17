@@ -48,7 +48,7 @@ final class SaidByUser extends TrajectoryEvent {
     required this.text,
     required this.startsTurn,
     required this.address,
-    required this.rawEventEntry,
+    required this.rawEvent,
   });
 
   /// The `event-admitted-to-mission` entry's own hash: what a
@@ -65,12 +65,17 @@ final class SaidByUser extends TrajectoryEvent {
 
   /// The relay's own `event` entry this admission decided (its `event`
   /// field, confirmed against docking_station's own decision.dart and
-  /// decision_wire.dart by teams-module-e2): read back with
-  /// `LogbookReader.get` and `RelayedEvent.read`, its raw bytes hold
-  /// whatever a module needs that an admission's reading doesn't carry —
-  /// for Teams, the activity's `serviceUrl`, which a reply needs and which
-  /// has no fixed value across tenants.
-  final ObjectId rawEventEntry;
+  /// decision_wire.dart by teams-module-e2): loop_launcher delivers it in
+  /// this same feed, immediately before the admission that names it
+  /// (confirmed against source by loop-launcher-5b, 2026-11-18 03:35 — the
+  /// feed answers only `subscribe`, never `get`, so there is no other way
+  /// to reach it). Null only if it somehow did not arrive first, which the
+  /// feed's own contract says cannot happen. Pass its `id` and `body` to
+  /// docking_station's `RelayedEvent.read` for whatever a module needs that
+  /// an admission's reading doesn't carry — for Teams, the activity's
+  /// `serviceUrl`, which a reply needs and which has no fixed value across
+  /// tenants.
+  final Entry? rawEvent;
 }
 
 /// An entry the loop itself wrote on its own turn chain.
@@ -81,6 +86,8 @@ final class TurnOnChain extends TrajectoryEvent {
   final TurnEnvelope turn;
 }
 
+final _eventKind = Kind.parse('event')!;
+
 /// Every event on [chainRoot]'s trajectory, live, in logbook order: the
 /// loop's own turns (by the same chain-membership rule [followTrajectory]
 /// uses) and every `MessageSaid` the docking station admitted to this
@@ -88,6 +95,13 @@ final class TurnOnChain extends TrajectoryEvent {
 /// admission is never chained onto the loop's turns at all. An admission
 /// whose reading is not something said (a join, a change) is skipped: this
 /// loop has nothing to render for it yet.
+///
+/// The relay's raw `event` entries arrive too, each immediately before the
+/// admission that names it (loop_launcher's contract, confirmed by
+/// loop-launcher-5b, 2026-11-18 03:35): held here, by id, until that
+/// admission turns up to claim it, never emitted as their own
+/// [TrajectoryEvent] since nothing here knows what to render of one — that
+/// is a module's job, done with [SaidByUser.rawEvent] once it is read.
 ///
 /// Built with [Stream.expand] rather than `async*`, for the same reason as
 /// [followTrajectory]: `expand` passes a cancel straight through to
@@ -98,7 +112,8 @@ Stream<TrajectoryEvent> followTrajectoryHistory(
   required ObjectId chainRoot,
 }) {
   final onChain = <ObjectId>{chainRoot};
-  final kinds = {turnKind, DecisionEntryKind.eventAdmittedToMission};
+  final rawEvents = <ObjectId, Entry>{};
+  final kinds = {turnKind, DecisionEntryKind.eventAdmittedToMission, _eventKind};
   return reader.subscribe(kinds: kinds).expand((item) {
     if (item is! Entry) return const [];
     if (item.kind == turnKind) {
@@ -106,6 +121,10 @@ Stream<TrajectoryEvent> followTrajectoryHistory(
       if (!belongs) return const [];
       onChain.add(item.id);
       return [TurnOnChain(item.id, TurnEnvelope.decode(item.body))];
+    }
+    if (item.kind == _eventKind) {
+      rawEvents[item.id] = item;
+      return const [];
     }
     final decision = decodeDecision(item.kind, item.body);
     if (decision case EventAdmittedToMission(
@@ -120,7 +139,7 @@ Stream<TrajectoryEvent> followTrajectoryHistory(
           text: node.text,
           startsTurn: startsTurn ?? false,
           address: addressInExternalSystem,
-          rawEventEntry: event,
+          rawEvent: rawEvents.remove(event),
         ),
       ];
     }

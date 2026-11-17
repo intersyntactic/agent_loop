@@ -35,7 +35,7 @@ import 'package:is_airlock_api/is_airlock_api.dart'
     show Action, Crux, Done, Failed, ModelCall, Program, Projection, Result, WebRequest;
 import 'package:is_logbook/service.dart' show Kind;
 import 'package:is_logbook_client/is_logbook_client.dart'
-    show GotEntry, LogbookReader, ObjectId;
+    show LogbookReader, ObjectId;
 import 'package:is_shapes/is_shapes.dart' show EntryId;
 import 'package:is_teams_module/is_teams_module.dart'
     show TeamsPost, teamsPostRequest, teamsRecordedEvent;
@@ -136,15 +136,15 @@ Future<void> main(List<String> args) async {
           );
           break;
         }
-        final got = await reader.get(event.rawEventEntry);
-        if (got is! GotEntry) {
+        final rawEvent = event.rawEvent;
+        if (rawEvent == null) {
           stderr.writeln(
-            'agent_loop: could not read the triggering event '
-            '${event.rawEventEntry.hex}: $got',
+            'agent_loop: no raw event arrived before this admission, not '
+            'posting to Teams',
           );
           break;
         }
-        final relayed = RelayedEvent.read(got.entry.id, got.entry.body);
+        final relayed = RelayedEvent.read(rawEvent.id, rawEvent.body);
         final teamsEvent = relayed == null
             ? null
             : teamsRecordedEvent(relayed.bytes);
