@@ -19,14 +19,12 @@ sealed class TurnProvenance {
 
   /// [json] as a provenance, as [toJson] wrote it. Throws a
   /// [FormatException] for anything else.
-  static TurnProvenance fromJson(Map<String, Object?> json) =>
-      switch (json['kind']) {
-        'fromAdmission' => FromAdmission(
-          EntryHash.parse(json['admitted']! as String)!,
-        ),
-        'own' => const Own(),
-        final kind => throw FormatException('not a provenance: $kind'),
-      };
+  static TurnProvenance fromJson(Map<String, Object?> json) => switch (json) {
+    {'kind': 'fromAdmission', 'admitted': final String admitted} =>
+      FromAdmission(EntryHash.parse(admitted)!),
+    {'kind': 'own'} => const Own(),
+    _ => throw FormatException('not a provenance: ${json['kind']}'),
+  };
 }
 
 /// This turn came from [admitted], the journal entry hash of the docking
