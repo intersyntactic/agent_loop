@@ -1,5 +1,5 @@
 // Proves ReplyChunkChain against a real JournalService over a real Unix
-// socket: the chain's root is an attached root (is_journal 0.8.0) naming
+// socket: the chain's root is an attached root (is_journal 0.9.0) naming
 // its parent as the body's first line, enforced by the service itself, not
 // a claim in JSON a reader has to trust — a chunk chain only attaches to a
 // path the sender actually owns. Later entries chain normally, as bare
@@ -26,7 +26,8 @@ void main() {
     uid = int.parse(Process.runSync('id', ['-u']).stdout.toString().trim());
     final senderTable = SenderTable.parse(
       Uint8List.fromList(
-        '$uid turn reply-chunk assigned\nattaching: reply-chunk\n'.codeUnits,
+        '$uid turn reply-chunk users-assigned-to-journey-path\nattaching: reply-chunk\n'
+            .codeUnits,
       ),
     );
     service = await JournalService.start(
@@ -49,7 +50,7 @@ void main() {
       Uint8List.fromList('${DateTime.now().microsecondsSinceEpoch}'.codeUnits),
     );
     final root = await writer.append(
-      Kind.parse('assigned')!,
+      Kind.parse('users-assigned-to-journey-path')!,
       null,
       Uint8List.fromList(
         utf8.encode(
