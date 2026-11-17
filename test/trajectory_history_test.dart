@@ -56,7 +56,7 @@ void main() {
       Kind.usersAssignedToTrajectory,
       Uint8List.fromList(
         '{"trajectory":"${EntryHash.origin.hex}",'
-                '"mission":"${client.EntryHash.of(Uint8List.fromList('m'.codeUnits)).hex}",'
+                '"mission":"${client.ObjectId.of(Uint8List.fromList('m'.codeUnits)).hex}",'
                 '"loopUser":"$uid","suit":"1002"}'
             .codeUnits,
       ),
@@ -66,7 +66,7 @@ void main() {
     // The admission that admits the user's message, exactly as the
     // docking station would encode it.
     final admission = EventAdmittedToMission(
-      EntryHash.origin,
+      client.ObjectId.of(Uint8List.fromList('event'.codeUnits)),
       by: DecidedBy.rules,
       reading: MessageSaid(
         addressInExternalSystem: AddressInExternalSystem.parse('teams:c1')!,
@@ -98,8 +98,9 @@ void main() {
     }, const Own());
 
     final found = <TrajectoryEvent>[];
-    // Not cancelled: see trajectory_chain_test.dart's own note on
-    // is_logbook_client 0.1.0's subscribe().cancel() hang.
+    // Not cancelled: see trajectory_chain_test.dart's own note — the hang
+    // is in followTrajectoryHistory's own async* wrapping, not in
+    // is_logbook_client 0.2.0's subscribe(), which fixed its own.
     followTrajectoryHistory(
       reader,
       turnKind: turnKind,

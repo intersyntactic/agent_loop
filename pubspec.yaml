@@ -17,9 +17,9 @@ dependencies:
   is_docking_station:
     git:
       url: https://github.com/intersyntactic/docking_station.git
-      ref: 6b08790c02fd005f418196873c9206df68d3fb43
-  is_logbook: ^0.1.0
-  is_logbook_client: ^0.1.0
+      ref: 8b7a886582b0149d4cf79b1c5d782a0fb8a6a685
+  is_logbook: ^0.2.0
+  is_logbook_client: ^0.2.0
   is_shapes: ^0.5.0
   is_airlock_api: ^0.8.0
 

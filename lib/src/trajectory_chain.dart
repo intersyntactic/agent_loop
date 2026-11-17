@@ -9,7 +9,7 @@ import 'dart:convert' show utf8;
 import 'package:checked_json/checked_json.dart' show JsonObject;
 import 'package:is_logbook/service.dart' show Kind;
 import 'package:is_logbook_client/is_logbook_client.dart'
-    show CaughtUp, Entry, EntryHash, LogbookReader;
+    show CaughtUp, Entry, LogbookReader, ObjectId;
 
 import 'logbook_writer.dart';
 import 'turn_envelope.dart';
@@ -19,7 +19,7 @@ import 'turn_envelope.dart';
 /// appends always follow its true tip rather than racing each other to
 /// name it.
 final class TrajectoryChain {
-  TrajectoryChain({required this.writer, required this.kind, EntryHash? tip})
+  TrajectoryChain({required this.writer, required this.kind, ObjectId? tip})
     : _tip = tip;
 
   /// Where this chain's entries are sent.
@@ -28,17 +28,17 @@ final class TrajectoryChain {
   /// The kind every turn of this chain is sent as.
   final Kind kind;
 
-  EntryHash? _tip;
+  ObjectId? _tip;
   Future<void> _queue = Future.value();
 
   /// The logbook entry this chain's next append follows; null before its
   /// first (never true for a trajectory chain, whose root is the
   /// `users-assigned-to-trajectory` entry [findTrajectoryRoot] returns).
-  EntryHash? get tip => _tip;
+  ObjectId? get tip => _tip;
 
   /// Appends [node] after the current tip, in an envelope naming
   /// [provenance], and returns the new tip.
-  Future<EntryHash> append(
+  Future<ObjectId> append(
     Map<String, Object?> node,
     TurnProvenance provenance,
   ) {
@@ -50,13 +50,13 @@ final class TrajectoryChain {
   /// rather than this chain's own [kind] — a model request and its pieces,
   /// for instance, share this chain's tip without being turns themselves.
   /// Returns the new entry's hash.
-  Future<EntryHash> appendEntry(Kind entryKind, List<int> bytes) {
+  Future<ObjectId> appendEntry(Kind entryKind, List<int> bytes) {
     final result = _queue.then((_) => _appendEntryOne(entryKind, bytes));
     _queue = result.then((_) {}, onError: (_) {});
     return result;
   }
 
-  Future<EntryHash> _appendEntryOne(Kind entryKind, List<int> bytes) async {
+  Future<ObjectId> _appendEntryOne(Kind entryKind, List<int> bytes) async {
     final entry = await writer.append(entryKind, _tip, bytes);
     _tip = entry;
     return entry;
@@ -75,18 +75,18 @@ final class TrajectoryChain {
 /// [NoTrajectoryAssigned] if the backlog names no assignment for
 /// [loopUser] — a loop started before its assignment was written, not a
 /// bug, so a plain [Exception] rather than an [Error].
-Future<EntryHash> findTrajectoryRoot(
+Future<ObjectId> findTrajectoryRoot(
   LogbookReader reader, {
   required String loopUser,
 }) async {
-  EntryHash? root;
+  ObjectId? root;
   final subscription = reader.subscribe(
     kinds: {Kind.usersAssignedToTrajectory},
   );
   await for (final item in subscription) {
     switch (item) {
       case Entry entry:
-        if (_loopUserOf(entry.body) == loopUser) root = entry.hash;
+        if (_loopUserOf(entry.body) == loopUser) root = entry.id;
       case CaughtUp _:
         return root ?? (throw NoTrajectoryAssigned(loopUser));
     }
@@ -127,18 +127,18 @@ String? _loopUserOf(List<int> body) {
 /// An entry belongs to the chain when its hash is [chainRoot] or its
 /// `previous` is already on it — [chainRoot] itself is never yielded (it is
 /// an assignment, not a turn).
-Stream<(EntryHash, TurnEnvelope)> followTrajectory(
+Stream<(ObjectId, TurnEnvelope)> followTrajectory(
   LogbookReader reader, {
   required Kind kind,
-  required EntryHash chainRoot,
+  required ObjectId chainRoot,
 }) async* {
-  final onChain = <EntryHash>{chainRoot};
+  final onChain = <ObjectId>{chainRoot};
   await for (final item in reader.subscribe(kinds: {kind})) {
     if (item is! Entry) continue;
     final belongs = item.previous != null && onChain.contains(item.previous);
     if (belongs) {
-      onChain.add(item.hash);
-      yield (item.hash, TurnEnvelope.decode(item.body));
+      onChain.add(item.id);
+      yield (item.id, TurnEnvelope.decode(item.body));
     }
   }
 }

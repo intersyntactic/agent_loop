@@ -10,7 +10,9 @@ import 'package:is_airlock_api/is_airlock_api.dart'
     show ModelRequest, ModelRequestPiece, RecordedText;
 import 'package:is_content_id/is_content_id.dart' show ObjectId;
 import 'package:is_logbook/service.dart' show Kind;
-import 'package:is_logbook_client/is_logbook_client.dart' show EntryHash;
+import 'package:is_logbook_client/is_logbook_client.dart'
+    as logbook_client
+    show ObjectId;
 import 'package:is_shapes/is_shapes.dart' show EntryId;
 
 import 'trajectory_chain.dart';
@@ -22,12 +24,12 @@ final _requestKind = Kind.parse(ModelRequest.kind)!;
 /// [ModelRequestPiece] entry per text, then a [ModelRequest] entry naming
 /// each as a [RecordedText] and [builtFrom], the turns they were rendered
 /// from. All land on [chain]'s own tip, in order. Returns the request
-/// entry's hash.
-Future<EntryHash> recordModelRequestOnTrajectory(
+/// entry's id.
+Future<logbook_client.ObjectId> recordModelRequestOnTrajectory(
   TrajectoryChain chain, {
   required String systemPrompt,
   required String request,
-  required List<EntryHash> builtFrom,
+  required List<logbook_client.ObjectId> builtFrom,
 }) async {
   final recordedSystemPrompt = await _recordText(chain, systemPrompt);
   final recordedRequest = await _recordText(chain, request);

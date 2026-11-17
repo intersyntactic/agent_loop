@@ -18,7 +18,7 @@ import 'dart:io';
 import 'package:agent_loop/agent_loop.dart';
 import 'package:is_logbook/service.dart' show Kind;
 import 'package:is_logbook_client/is_logbook_client.dart'
-    show EntryHash, LogbookReader;
+    show LogbookReader, ObjectId;
 
 /// Until the tool-intent-as-text design lands (task 10), a fixed, labelled
 /// placeholder: enough to exercise recording for real, not what the demo's
@@ -46,7 +46,7 @@ Future<void> main(List<String> args) async {
   );
 
   final reader = LogbookReader(options.recordRead);
-  final EntryHash root;
+  final ObjectId root;
   try {
     root = await findTrajectoryRoot(reader, loopUser: loopUser);
   } on NoTrajectoryAssigned catch (e) {

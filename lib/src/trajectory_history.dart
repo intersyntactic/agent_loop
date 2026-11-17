@@ -19,7 +19,7 @@ import 'package:is_docking_station/is_docking_station.dart'
     show DecisionEntryKind, EventAdmittedToMission, MessageSaid, decodeDecision;
 import 'package:is_logbook/service.dart' show Kind;
 import 'package:is_logbook_client/is_logbook_client.dart'
-    show Entry, EntryHash, LogbookReader;
+    show Entry, LogbookReader, ObjectId;
 import 'package:is_shapes/is_shapes.dart' show ActorId;
 
 import 'model_request_render.dart' show renderRequestBody;
@@ -47,7 +47,7 @@ final class SaidByUser extends TrajectoryEvent {
   /// The `event-admitted-to-mission` entry's own hash: what a
   /// [ModelRequest.builtFrom] names for this event, since it is where this
   /// text actually came from, not a turn.
-  final EntryHash hash;
+  final ObjectId hash;
   final ActorId author;
   final String text;
   final bool startsTurn;
@@ -57,7 +57,7 @@ final class SaidByUser extends TrajectoryEvent {
 final class TurnOnChain extends TrajectoryEvent {
   const TurnOnChain(this.hash, this.turn);
 
-  final EntryHash hash;
+  final ObjectId hash;
   final TurnEnvelope turn;
 }
 
@@ -71,27 +71,27 @@ final class TurnOnChain extends TrajectoryEvent {
 Stream<TrajectoryEvent> followTrajectoryHistory(
   LogbookReader reader, {
   required Kind turnKind,
-  required EntryHash chainRoot,
+  required ObjectId chainRoot,
 }) async* {
-  final onChain = <EntryHash>{chainRoot};
+  final onChain = <ObjectId>{chainRoot};
   final kinds = {turnKind, DecisionEntryKind.eventAdmittedToMission};
   await for (final item in reader.subscribe(kinds: kinds)) {
     if (item is! Entry) continue;
     if (item.kind == turnKind) {
       final belongs = item.previous != null && onChain.contains(item.previous);
       if (belongs) {
-        onChain.add(item.hash);
-        yield TurnOnChain(item.hash, TurnEnvelope.decode(item.body));
+        onChain.add(item.id);
+        yield TurnOnChain(item.id, TurnEnvelope.decode(item.body));
       }
       continue;
     }
-    final decision = decodeDecision(item.kind!, item.body);
+    final decision = decodeDecision(item.kind, item.body);
     if (decision case EventAdmittedToMission(
       reading: MessageSaid(:final node),
       :final startsTurn,
     )) {
       yield SaidByUser(
-        hash: item.hash,
+        hash: item.id,
         author: node.author,
         text: node.text,
         startsTurn: startsTurn ?? false,

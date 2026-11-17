@@ -96,7 +96,7 @@ void main() {
           if (item is Entry) entries.add(item);
         });
     await Future<void>.delayed(const Duration(milliseconds: 100));
-    unawaited(sub.cancel());
+    await sub.cancel();
 
     expect(entries, hasLength(1));
     expect(entries.single.previous, rootHash);

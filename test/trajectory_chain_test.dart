@@ -40,7 +40,7 @@ void main() {
     tmp.deleteSync(recursive: true);
   });
 
-  Future<client.EntryHash> assign({
+  Future<client.ObjectId> assign({
     required String trajectory,
     required String mission,
     required String loopUser,
@@ -63,7 +63,7 @@ void main() {
   test('finds the latest assignment naming this loop user', () async {
     final root = await assign(
       trajectory: EntryHash.origin.hex,
-      mission: client.EntryHash.of(Uint8List.fromList('mission-a'.codeUnits))
+      mission: client.ObjectId.of(Uint8List.fromList('mission-a'.codeUnits))
           .hex,
       loopUser: '1001',
       suit: '1002',
@@ -75,7 +75,7 @@ void main() {
   test('refuses when no assignment names this loop user', () async {
     await assign(
       trajectory: EntryHash.origin.hex,
-      mission: client.EntryHash.of(Uint8List.fromList('mission-b'.codeUnits))
+      mission: client.ObjectId.of(Uint8List.fromList('mission-b'.codeUnits))
           .hex,
       loopUser: '1001',
       suit: '1002',
@@ -91,7 +91,7 @@ void main() {
       'hashes', () async {
     final root = await assign(
       trajectory: EntryHash.origin.hex,
-      mission: client.EntryHash.of(Uint8List.fromList('mission-c'.codeUnits))
+      mission: client.ObjectId.of(Uint8List.fromList('mission-c'.codeUnits))
           .hex,
       loopUser: uid,
       suit: '1002',
@@ -120,11 +120,13 @@ void main() {
       'text': 'hello',
     }, const Own());
 
-    final found = <(EntryHash, TurnEnvelope)>[];
-    // Not cancelled: is_logbook_client 0.1.0's LogbookReader.subscribe
-    // never completes its cancel future (reproduced directly against it,
-    // not just through this wrapper — flagged to logbook-client-90, not
-    // fixed here). tearDown's service.close() ends the socket instead.
+    final found = <(client.ObjectId, TurnEnvelope)>[];
+    // Not cancelled: followTrajectory is itself an async* generator over the
+    // live subscription, so cancelling it waits for its next yield, which
+    // never comes while idle — is_logbook_client 0.2.0 fixed exactly this
+    // in its own subscribe() by not being one, but the fix doesn't reach
+    // through a generator wrapped around it. tearDown's service.close()
+    // ends the socket instead.
     followTrajectory(reader, kind: turnKind, chainRoot: root).listen(found.add);
     await Future<void>.delayed(const Duration(milliseconds: 200));
 
