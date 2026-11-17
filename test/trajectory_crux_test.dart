@@ -1,15 +1,15 @@
 // Proves TrajectoryCrux against a real LogbookService for the write side
-// (the `proposed` entry it writes), and a fake `returned` stream for the
-// match-by-EntryId-of-raw-bytes rule airlock-api-04 confirmed directly
-// (2026-11-18): not the EntryHash a write's `ok` gives back, which depends
-// on chain position and so would never match.
+// (the action-proposed-by-agent-loop entry it writes), and a fake
+// `returned` stream for the match-by-EntryId-of-raw-bytes rule
+// airlock-api-04 confirmed directly (2026-11-18): not the EntryHash a
+// write's `ok` gives back, which depends on chain position and so would
+// never match.
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:agent_loop/agent_loop.dart';
-import 'package:is_airlock_api/is_airlock_api.dart' show ReturnedProposal;
 import 'package:is_logbook/is_logbook.dart';
 import 'package:is_logbook/service.dart';
 import 'package:is_logbook_client/is_logbook_client.dart'
@@ -22,13 +22,13 @@ void main() {
   late Directory tmp;
   late LogbookService service;
   final turnKind = Kind.parse('turn')!;
-  final proposedKind = Kind.parse('proposed')!;
+  final proposedKind = Kind.parse('action-proposed-by-agent-loop')!;
 
   setUp(() async {
     tmp = Directory.systemTemp.createTempSync('agent_loop_crux_test_');
     final uid = Process.runSync('id', ['-u']).stdout.toString().trim();
     final senderTable = SenderTable.parse(
-      Uint8List.fromList('$uid turn proposed\n'.codeUnits),
+      Uint8List.fromList('$uid turn action-proposed-by-agent-loop\n'.codeUnits),
     );
     service = await LogbookService.start(
       Logbook.open(Directory('${tmp.path}/logbook'))!,
@@ -55,7 +55,7 @@ void main() {
       tip: rootHash,
     );
 
-    final returnedController = StreamController<ReturnedProposal>();
+    final returnedController = StreamController<ReturnedResult>();
     final crux = TrajectoryCrux(
       chain: chain,
       returned: returnedController.stream,
@@ -66,24 +66,20 @@ void main() {
     // A returned entry for a DIFFERENT proposal, which must be ignored,
     // then the matching one.
     final wrongId = EntryId.of(utf8.encode(jsonEncode({'other': true})));
-    returnedController.add(
-      ReturnedProposal.fromJson({
-        'proposed': wrongId.hex,
-        'outcome': {'kind': 'refused', 'why': 'not this one'},
-      }),
-    );
+    returnedController.add((
+      proposed: wrongId,
+      result: {'kind': 'refused', 'why': 'not this one'},
+    ));
 
     final outcomeFuture = crux.propose(proposal);
 
     final writtenBytes = utf8.encode(jsonEncode(proposal));
     final id = EntryId.of(writtenBytes);
     await Future<void>.delayed(const Duration(milliseconds: 50));
-    returnedController.add(
-      ReturnedProposal.fromJson({
-        'proposed': id.hex,
-        'outcome': {'kind': 'ran', 'output': 'ok'},
-      }),
-    );
+    returnedController.add((
+      proposed: id,
+      result: {'kind': 'ran', 'output': 'ok'},
+    ));
 
     final outcome = await outcomeFuture;
     expect(outcome, {'kind': 'ran', 'output': 'ok'});

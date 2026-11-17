@@ -36,5 +36,6 @@ export 'src/reply_chunk_chain.dart';
 export 'src/trajectory_chain.dart';
 export 'src/trajectory_crux.dart';
 export 'src/trajectory_history.dart';
+export 'src/trajectory_results.dart';
 export 'src/trajectory_model_request.dart';
 export 'src/turn_envelope.dart';

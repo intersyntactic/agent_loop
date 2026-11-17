@@ -1,24 +1,33 @@
 /// The loop's entry point: run as `agent-loop@<loop-user>`, one per
-/// trajectory, with no arguments of its own beyond the two record sockets
-/// (RULINGS: a loop gets no sign-in and no network; the airlock makes the
-/// model call). It finds its own assignment in the record rather than being
-/// told its trajectory (infra's polkit can start only named template
-/// units, so loop_launcher can pass no per-trajectory argument), follows
-/// its trajectory's history live (the docking station's admissions and its
-/// own turn chain, merged), and records a model request whenever the turn
-/// rule says the agent should answer — the proposal a crux will carry out.
-/// It does not yet drive the crux through to a reply: that needs a model
-/// sign-in name this box hasn't given agent_loop yet (task 10), so this
-/// stops at the record, same as `recordModelRequestOnTrajectory` always
-/// has.
+/// trajectory, with no arguments beyond the two record sockets and which
+/// model sign-in and model to ask for (RULINGS: a loop gets no sign-in and
+/// no network of its own; the airlock makes the model call). It finds its
+/// own assignment in the record rather than being told its trajectory
+/// (infra's polkit can start only named template units, so loop_launcher
+/// can pass no per-trajectory argument), follows its trajectory's history
+/// live (the docking station's admissions and its own turn chain, merged),
+/// and, whenever the turn rule says the agent should answer, records a
+/// model request and proposes [AskTheModel] through its crux, naming it.
+///
+/// The `place` a proposal names is null: nothing here yet gives one
+/// meaning (flagged to airlock-api-04 — one turn, one proposal, so there is
+/// only ever one place to be at).
+///
+/// Stops once it has the model's reply, or why the call was refused:
+/// posting it to Teams (task 10's next step) is not here yet.
 library;
 
 import 'dart:io';
 
 import 'package:agent_loop/agent_loop.dart';
+import 'package:is_effects/is_effects.dart'
+    show ModelName, ModelReply, ModelSignInName;
+import 'package:is_airlock_api/is_airlock_api.dart'
+    show Action, Crux, Done, Failed, ModelCall, Program, Result;
 import 'package:is_logbook/service.dart' show Kind;
 import 'package:is_logbook_client/is_logbook_client.dart'
     show LogbookReader, ObjectId;
+import 'package:is_shapes/is_shapes.dart' show EntryId;
 
 /// Until the tool-intent-as-text design lands (task 10), a fixed, labelled
 /// placeholder: enough to exercise recording for real, not what the demo's
@@ -33,7 +42,8 @@ Future<void> main(List<String> args) async {
   final options = _Options.parse(args);
   if (options == null) {
     stderr.writeln(
-      'usage: agent_loop --record-read <socket> --record-write <socket>',
+      'usage: agent_loop --record-read <socket> --record-write <socket> '
+      '--model-sign-in <name> --model <name>',
     );
     exitCode = 64; // EX_USAGE
     return;
@@ -59,6 +69,10 @@ Future<void> main(List<String> args) async {
   final writer = LogbookWriter(options.recordWrite);
   final turnKind = Kind.parse(_turnKind)!;
   final chain = TrajectoryChain(writer: writer, kind: turnKind, tip: root);
+  final crux = Crux.through(
+    TrajectoryCrux(chain: chain, returned: followResults(reader)),
+    place: null,
+  );
 
   final history = <TrajectoryEvent>[];
   await for (final event in followTrajectoryHistory(
@@ -83,30 +97,71 @@ Future<void> main(List<String> args) async {
       ],
     );
     stdout.writeln('agent_loop: recorded model-request ${requestHash.hex}');
+
+    final asked = Program.askTheModel.runOrRefusal<ModelReply>(
+      ModelCall(
+        signIn: options.modelSignIn,
+        model: options.model,
+        request: EntryId.parse(requestHash.hex)!,
+      ),
+      then: (ModelReply reply) => Done(reply),
+    );
+    final Result<ModelReply> outcome = await asked.next(crux);
+    switch (outcome) {
+      case Done(:final value):
+        stdout.writeln('agent_loop: model replied: ${value.text}');
+      case Failed(:final why):
+        stdout.writeln('agent_loop: model call refused: $why');
+      case Action():
+        // runOrRefusal's own then never returns one: it is called only
+        // with the output, never asked to propose a further action.
+        throw StateError('runOrRefusal returned an unresolved Action');
+    }
   }
 }
 
 final class _Options {
-  const _Options({required this.recordRead, required this.recordWrite});
+  const _Options({
+    required this.recordRead,
+    required this.recordWrite,
+    required this.modelSignIn,
+    required this.model,
+  });
 
   final String recordRead;
   final String recordWrite;
+  final ModelSignInName modelSignIn;
+  final ModelName model;
 
   static _Options? parse(List<String> args) {
     String? recordRead;
     String? recordWrite;
+    ModelSignInName? modelSignIn;
+    ModelName? model;
     for (var i = 0; i < args.length; i++) {
       switch (args[i]) {
         case '--record-read' when i + 1 < args.length:
           recordRead = args[++i];
         case '--record-write' when i + 1 < args.length:
           recordWrite = args[++i];
+        case '--model-sign-in' when i + 1 < args.length:
+          modelSignIn = ModelSignInName.parse(args[++i]);
+        case '--model' when i + 1 < args.length:
+          model = ModelName.parse(args[++i]);
         default:
           return null;
       }
     }
-    return recordRead != null && recordWrite != null
-        ? _Options(recordRead: recordRead, recordWrite: recordWrite)
+    return recordRead != null &&
+            recordWrite != null &&
+            modelSignIn != null &&
+            model != null
+        ? _Options(
+            recordRead: recordRead,
+            recordWrite: recordWrite,
+            modelSignIn: modelSignIn,
+            model: model,
+          )
         : null;
   }
 }
