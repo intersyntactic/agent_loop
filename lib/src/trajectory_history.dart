@@ -68,36 +68,41 @@ final class TurnOnChain extends TrajectoryEvent {
 /// admission is never chained onto the loop's turns at all. An admission
 /// whose reading is not something said (a join, a change) is skipped: this
 /// loop has nothing to render for it yet.
+///
+/// Built with [Stream.expand] rather than `async*`, for the same reason as
+/// [followTrajectory]: `expand` passes a cancel straight through to
+/// [LogbookReader.subscribe], which an `async*` wrapper would not.
 Stream<TrajectoryEvent> followTrajectoryHistory(
   LogbookReader reader, {
   required Kind turnKind,
   required ObjectId chainRoot,
-}) async* {
+}) {
   final onChain = <ObjectId>{chainRoot};
   final kinds = {turnKind, DecisionEntryKind.eventAdmittedToMission};
-  await for (final item in reader.subscribe(kinds: kinds)) {
-    if (item is! Entry) continue;
+  return reader.subscribe(kinds: kinds).expand((item) {
+    if (item is! Entry) return const [];
     if (item.kind == turnKind) {
       final belongs = item.previous != null && onChain.contains(item.previous);
-      if (belongs) {
-        onChain.add(item.id);
-        yield TurnOnChain(item.id, TurnEnvelope.decode(item.body));
-      }
-      continue;
+      if (!belongs) return const [];
+      onChain.add(item.id);
+      return [TurnOnChain(item.id, TurnEnvelope.decode(item.body))];
     }
     final decision = decodeDecision(item.kind, item.body);
     if (decision case EventAdmittedToMission(
       reading: MessageSaid(:final node),
       :final startsTurn,
     )) {
-      yield SaidByUser(
-        hash: item.id,
-        author: node.author,
-        text: node.text,
-        startsTurn: startsTurn ?? false,
-      );
+      return [
+        SaidByUser(
+          hash: item.id,
+          author: node.author,
+          text: node.text,
+          startsTurn: startsTurn ?? false,
+        ),
+      ];
     }
-  }
+    return const [];
+  });
 }
 
 /// [history], oldest first, as one plain-text body: one line per event.

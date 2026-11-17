@@ -127,18 +127,23 @@ String? _loopUserOf(List<int> body) {
 /// An entry belongs to the chain when its hash is [chainRoot] or its
 /// `previous` is already on it — [chainRoot] itself is never yielded (it is
 /// an assignment, not a turn).
+///
+/// Built with [Stream.expand] rather than `async*`: an `async*` generator's
+/// own cancel future waits for its next yield, which never comes while a
+/// live subscription is idle (confirmed directly, logbook-client-90, 18
+/// Nov); `expand` passes a cancel straight through to [LogbookReader]'s own
+/// subscription, which is not a generator and cancels at once.
 Stream<(ObjectId, TurnEnvelope)> followTrajectory(
   LogbookReader reader, {
   required Kind kind,
   required ObjectId chainRoot,
-}) async* {
+}) {
   final onChain = <ObjectId>{chainRoot};
-  await for (final item in reader.subscribe(kinds: {kind})) {
-    if (item is! Entry) continue;
+  return reader.subscribe(kinds: {kind}).expand((item) {
+    if (item is! Entry) return const [];
     final belongs = item.previous != null && onChain.contains(item.previous);
-    if (belongs) {
-      onChain.add(item.id);
-      yield (item.id, TurnEnvelope.decode(item.body));
-    }
-  }
+    if (!belongs) return const [];
+    onChain.add(item.id);
+    return [(item.id, TurnEnvelope.decode(item.body))];
+  });
 }

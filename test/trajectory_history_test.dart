@@ -98,15 +98,13 @@ void main() {
     }, const Own());
 
     final found = <TrajectoryEvent>[];
-    // Not cancelled: see trajectory_chain_test.dart's own note — the hang
-    // is in followTrajectoryHistory's own async* wrapping, not in
-    // is_logbook_client 0.2.0's subscribe(), which fixed its own.
-    followTrajectoryHistory(
+    final sub = followTrajectoryHistory(
       reader,
       turnKind: turnKind,
       chainRoot: root,
     ).listen(found.add);
     await Future<void>.delayed(const Duration(milliseconds: 200));
+    await sub.cancel();
 
     expect(found, hasLength(2));
     expect(found[0], isA<SaidByUser>());

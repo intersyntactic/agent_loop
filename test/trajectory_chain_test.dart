@@ -121,14 +121,13 @@ void main() {
     }, const Own());
 
     final found = <(client.ObjectId, TurnEnvelope)>[];
-    // Not cancelled: followTrajectory is itself an async* generator over the
-    // live subscription, so cancelling it waits for its next yield, which
-    // never comes while idle — is_logbook_client 0.2.0 fixed exactly this
-    // in its own subscribe() by not being one, but the fix doesn't reach
-    // through a generator wrapped around it. tearDown's service.close()
-    // ends the socket instead.
-    followTrajectory(reader, kind: turnKind, chainRoot: root).listen(found.add);
+    final sub = followTrajectory(
+      reader,
+      kind: turnKind,
+      chainRoot: root,
+    ).listen(found.add);
     await Future<void>.delayed(const Duration(milliseconds: 200));
+    await sub.cancel();
 
     expect(found, hasLength(2));
     expect(found[0].$1, first);
