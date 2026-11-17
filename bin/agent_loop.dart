@@ -27,12 +27,20 @@ library;
 import 'dart:io';
 
 import 'package:agent_loop/agent_loop.dart';
-import 'package:is_docking_station/is_docking_station.dart'
-    show RelayedEvent;
+import 'package:is_docking_station/is_docking_station.dart' show RelayedEvent;
 import 'package:is_effects/is_effects.dart'
     show ModelName, ModelReply, ModelSignInName, SignIn;
 import 'package:is_airlock_api/is_airlock_api.dart'
-    show Action, Crux, Done, Failed, ModelCall, Program, Projection, Result, WebRequest;
+    show
+        Action,
+        Crux,
+        Done,
+        Failed,
+        ModelCall,
+        Program,
+        Projection,
+        Result,
+        WebRequest;
 import 'package:is_logbook/service.dart' show Kind;
 import 'package:is_logbook_client/is_logbook_client.dart'
     show LogbookReader, ObjectId;
@@ -128,61 +136,73 @@ Future<void> main(List<String> args) async {
     switch (outcome) {
       case Done(:final value):
         stdout.writeln('agent_loop: model replied: ${value.text}');
-        final resultEntry = link.resultEntryAt(turn);
-        if (resultEntry == null) {
-          stderr.writeln(
-            'agent_loop: no result entry recorded for turn $turn, not '
-            'posting to Teams',
+        try {
+          final resultEntry = link.resultEntryAt(turn);
+          if (resultEntry == null) {
+            stderr.writeln(
+              'agent_loop: no result entry recorded for turn $turn, not '
+              'posting to Teams',
+            );
+            break;
+          }
+          stdout.writeln('agent_loop: result entry ${resultEntry.hex}');
+          final rawEvent = event.rawEvent;
+          if (rawEvent == null) {
+            stderr.writeln(
+              'agent_loop: no raw event arrived before this admission, not '
+              'posting to Teams',
+            );
+            break;
+          }
+          stdout.writeln('agent_loop: triggering raw event ${rawEvent.id}');
+          final relayed = RelayedEvent.read(rawEvent.id, rawEvent.body);
+          final teamsEvent = relayed == null
+              ? null
+              : teamsRecordedEvent(relayed.bytes);
+          if (teamsEvent == null) {
+            stderr.writeln(
+              'agent_loop: the triggering event is not a Teams activity',
+            );
+            break;
+          }
+          stdout.writeln(
+            'agent_loop: decoded Teams event, serviceUrl '
+            '${teamsEvent.serviceUrl}',
           );
-          break;
-        }
-        final rawEvent = event.rawEvent;
-        if (rawEvent == null) {
-          stderr.writeln(
-            'agent_loop: no raw event arrived before this admission, not '
-            'posting to Teams',
+          final built = teamsPostRequest(
+            TeamsPost(
+              serviceUrl: teamsEvent.serviceUrl,
+              conversation: teamsEvent.conversation,
+              activity: {'type': 'message', 'text': value.text},
+            ),
+            _teamsSignIn,
           );
-          break;
-        }
-        final relayed = RelayedEvent.read(rawEvent.id, rawEvent.body);
-        final teamsEvent = relayed == null
-            ? null
-            : teamsRecordedEvent(relayed.bytes);
-        if (teamsEvent == null) {
-          stderr.writeln(
-            'agent_loop: the triggering event is not a Teams activity',
+          stdout.writeln('agent_loop: built Teams post request');
+          final webRequest = WebRequest(
+            built.origin,
+            body: built.body!,
+            projection: Projection.teamsMessageFromModelReply,
+            drawnFrom: resultEntry,
+            method: built.method,
+            path: built.path,
+            signIn: built.signIn,
+            headers: built.headers,
           );
-          break;
-        }
-        final built = teamsPostRequest(
-          TeamsPost(
-            serviceUrl: teamsEvent.serviceUrl,
-            conversation: teamsEvent.conversation,
-            activity: {'type': 'message', 'text': value.text},
-          ),
-          _teamsSignIn,
-        );
-        final webRequest = WebRequest(
-          built.origin,
-          body: built.body!,
-          projection: Projection.teamsMessageFromModelReply,
-          drawnFrom: resultEntry,
-          method: built.method,
-          path: built.path,
-          signIn: built.signIn,
-          headers: built.headers,
-        );
-        final posted = Program.web.runOrRefusal<void>(
-          webRequest,
-          then: (_) => const Done(null),
-        );
-        switch (await posted.next(Crux.through(link, place: ++turn))) {
-          case Done():
-            stdout.writeln('agent_loop: posted the reply to Teams');
-          case Failed(:final why):
-            stderr.writeln('agent_loop: Teams post refused: $why');
-          case Action():
-            throw StateError('runOrRefusal returned an unresolved Action');
+          final posted = Program.web.runOrRefusal<void>(
+            webRequest,
+            then: (_) => const Done(null),
+          );
+          stdout.writeln('agent_loop: proposing the Teams post');
+          switch (await posted.next(Crux.through(link, place: ++turn))) {
+            case Done():
+              stdout.writeln('agent_loop: posted the reply to Teams');
+            case Failed(:final why):
+              stderr.writeln('agent_loop: Teams post refused: $why');
+            case Action():
+              throw StateError('runOrRefusal returned an unresolved Action');
+          }
+        } on Object catch (e, st) {
+          stderr.writeln('agent_loop: posting to Teams threw: $e\n$st');
         }
       case Failed(:final why):
         stdout.writeln('agent_loop: model call refused: $why');

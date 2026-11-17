@@ -15,6 +15,7 @@ library;
 
 import 'dart:async';
 import 'dart:convert' show jsonEncode, utf8;
+import 'dart:io' show stdout;
 import 'dart:typed_data';
 
 import 'package:is_airlock_api/is_airlock_api.dart'
@@ -31,7 +32,11 @@ final _proposedKind = Kind.parse(ActionProposedByAgentLoop.kind)!;
 /// by whoever follows the loop's feed of them (see [followResults] in
 /// bin/agent_loop.dart's package, which builds one from a live
 /// [LogbookReader] subscription).
-typedef ReturnedResult = ({EntryId proposed, EntryId resultEntry, Object? result});
+typedef ReturnedResult = ({
+  EntryId proposed,
+  EntryId resultEntry,
+  Object? result,
+});
 
 /// [chain]'s loop, as the one proposer of its trajectory's next action:
 /// every [propose] lands on [chain]'s own tip, then waits on [returned] for
@@ -62,7 +67,13 @@ final class TrajectoryCrux implements ProposesActionsThroughTheRecord {
     final bytes = Uint8List.fromList(utf8.encode(jsonEncode(proposal)));
     final id = EntryId.of(bytes);
     await chain.appendEntry(_proposedKind, bytes);
+    stdout.writeln(
+      'agent_loop: proposal ${id.hex} appended, awaiting its result',
+    );
     await for (final entry in returned) {
+      stdout.writeln(
+        'agent_loop: saw result for ${entry.proposed.hex}, want ${id.hex}',
+      );
       if (entry.proposed != id) continue;
       if (proposal case {'place': final place}) {
         _resultEntries[place] = entry.resultEntry;
