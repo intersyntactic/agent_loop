@@ -4,18 +4,17 @@
 /// model call). It finds its own assignment in the record rather than being
 /// told its trajectory (infra's polkit can start only named template
 /// units, so loop_launcher can pass no per-trajectory argument), follows
-/// its trajectory's turns live, and records a model request after every
-/// [UserSaid] — the proposal a crux will later decide and carry out. It
-/// does not reach the crux itself: that invocation is still open
-/// (task 10, Nick's call), so this stops at the record, same as
-/// `recordModelRequest` always has.
+/// its trajectory's history live (the docking station's admissions and its
+/// own turn chain, merged), and records a model request whenever the turn
+/// rule says the agent should answer — the proposal a crux will carry out.
+/// It does not yet drive the crux through to a reply: that needs a model
+/// sign-in name this box hasn't given agent_loop yet (task 10), so this
+/// stops at the record, same as `recordModelRequest` always has.
 library;
 
 import 'dart:io';
 
 import 'package:agent_loop/agent_loop.dart';
-import 'package:is_conversation_shapes/is_conversation_shapes.dart'
-    show UserSaid;
 import 'package:is_logbook/service.dart' show Kind;
 import 'package:is_logbook_client/is_logbook_client.dart'
     show EntryHash, LogbookReader;
@@ -60,23 +59,27 @@ Future<void> main(List<String> args) async {
   final turnKind = Kind.parse(_turnKind)!;
   final chain = TrajectoryChain(writer: writer, kind: turnKind, tip: root);
 
-  final history = <TurnEnvelope>[];
-  final historyHashes = <EntryHash>[];
-  await for (final (hash, turn) in followTrajectory(
+  final history = <TrajectoryEvent>[];
+  await for (final event in followTrajectoryHistory(
     reader,
-    kind: turnKind,
+    turnKind: turnKind,
     chainRoot: root,
   )) {
-    history.add(turn);
-    historyHashes.add(hash);
-    if (turn.node['shape'] != UserSaid.shapeName) continue;
+    history.add(event);
+    if (event is! SaidByUser || !event.startsTurn) continue;
 
-    final request = renderRequestBody(history);
+    final request = renderTrajectoryHistory(history);
     final requestHash = await recordModelRequestOnTrajectory(
       chain,
       systemPrompt: _placeholderSystemPrompt,
       request: request,
-      builtFrom: historyHashes,
+      builtFrom: [
+        for (final e in history)
+          switch (e) {
+            SaidByUser(:final hash) => hash,
+            TurnOnChain(:final hash) => hash,
+          },
+      ],
     );
     stdout.writeln('agent_loop: recorded model-request ${requestHash.hex}');
   }
