@@ -45,9 +45,17 @@ typedef ReturnedResult = ({
 /// make — not consumed by one [propose] call, since a later one still
 /// needs it.
 final class TrajectoryCrux implements ProposesActionsThroughTheRecord {
-  TrajectoryCrux({required this.chain, required this.returned});
+  TrajectoryCrux({
+    required this.chain,
+    required Stream<ReturnedResult> returned,
+  }) : returned = returned.asBroadcastStream();
 
   final TrajectoryChain chain;
+
+  /// Broadcast, not the single-subscription stream passed in: [propose]
+  /// listens on every call, and a turn that posts a reply calls it twice
+  /// (the model call, then the post) — a single-subscription stream can
+  /// only ever be listened to once.
   final Stream<ReturnedResult> returned;
 
   /// The matching result entry's own id, by the place each proposal named

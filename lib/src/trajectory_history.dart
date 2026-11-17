@@ -113,7 +113,11 @@ Stream<TrajectoryEvent> followTrajectoryHistory(
 }) {
   final onChain = <ObjectId>{chainRoot};
   final rawEvents = <ObjectId, Entry>{};
-  final kinds = {turnKind, DecisionEntryKind.eventAdmittedToMission, _eventKind};
+  final kinds = {
+    turnKind,
+    DecisionEntryKind.eventAdmittedToMission,
+    _eventKind,
+  };
   return reader.subscribe(kinds: kinds).expand((item) {
     if (item is! Entry) return const [];
     if (item.kind == turnKind) {

@@ -11,22 +11,19 @@ environment:
 dependencies:
   checked_json: ^0.2.1
   is_content_id: ^0.2.0
-  is_conversation_shapes: ^0.8.2
+  is_conversation_shapes: ^0.8.3
   is_journal: ^0.9.0
   is_journal_client: ^0.1.2
-  is_docking_station:
-    git:
-      url: https://github.com/intersyntactic/docking_station.git
-      ref: 8f299f352734ba40599e3933eb3418d8c3256ddb
-  is_logbook: ^0.2.0
+  is_docking_station: ^0.1.0
+  is_logbook: ^0.2.1
   is_logbook_client: ^0.2.0
-  is_shapes: ^0.5.0
-  is_airlock_api: ^0.10.0
-  is_effects: ^0.7.0
+  is_shapes: ^0.6.0
+  is_airlock_api: ^0.10.1
+  is_effects: ^0.8.0
   is_teams_module:
     git:
       url: https://github.com/intersyntactic/teams_module.git
-      ref: 92a617d463b324432d66b2448257ca633c33734f
+      ref: c2bd93ee76afb033bc0c2d6607b3acf79b93134a
 
 dev_dependencies:
   lints: ^6.1.0
