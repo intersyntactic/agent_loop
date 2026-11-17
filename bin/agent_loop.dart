@@ -9,9 +9,10 @@
 /// and, whenever the turn rule says the agent should answer, records a
 /// model request and proposes [AskTheModel] through its crux, naming it.
 ///
-/// The `place` a proposal names is null: nothing here yet gives one
-/// meaning (flagged to airlock-api-04 — one turn, one proposal, so there is
-/// only ever one place to be at).
+/// The `place` a proposal names is its turn number, counted from 1
+/// (confirmed with airlock-api-04: the airlock service's P for this
+/// trajectory kind is an int, read at airlock lib/src/airlock_subscriber.dart;
+/// one proposal per turn here, so each turn is its own place).
 ///
 /// Stops once it has the model's reply, or why the call was refused:
 /// posting it to Teams (task 10's next step) is not here yet.
@@ -69,12 +70,10 @@ Future<void> main(List<String> args) async {
   final writer = LogbookWriter(options.recordWrite);
   final turnKind = Kind.parse(_turnKind)!;
   final chain = TrajectoryChain(writer: writer, kind: turnKind, tip: root);
-  final crux = Crux.through(
-    TrajectoryCrux(chain: chain, returned: followResults(reader)),
-    place: null,
-  );
+  final link = TrajectoryCrux(chain: chain, returned: followResults(reader));
 
   final history = <TrajectoryEvent>[];
+  var turn = 0;
   await for (final event in followTrajectoryHistory(
     reader,
     turnKind: turnKind,
@@ -98,6 +97,7 @@ Future<void> main(List<String> args) async {
     );
     stdout.writeln('agent_loop: recorded model-request ${requestHash.hex}');
 
+    final crux = Crux.through(link, place: ++turn);
     final asked = Program.askTheModel.runOrRefusal<ModelReply>(
       ModelCall(
         signIn: options.modelSignIn,
