@@ -16,7 +16,12 @@ library;
 import 'dart:async';
 
 import 'package:is_docking_station/is_docking_station.dart'
-    show DecisionEntryKind, EventAdmittedToMission, MessageSaid, decodeDecision;
+    show
+        AddressInExternalSystem,
+        DecisionEntryKind,
+        EventAdmittedToMission,
+        MessageSaid,
+        decodeDecision;
 import 'package:is_logbook/service.dart' show Kind;
 import 'package:is_logbook_client/is_logbook_client.dart'
     show Entry, LogbookReader, ObjectId;
@@ -42,6 +47,7 @@ final class SaidByUser extends TrajectoryEvent {
     required this.author,
     required this.text,
     required this.startsTurn,
+    required this.address,
   });
 
   /// The `event-admitted-to-mission` entry's own hash: what a
@@ -51,6 +57,10 @@ final class SaidByUser extends TrajectoryEvent {
   final ActorId author;
   final String text;
   final bool startsTurn;
+
+  /// Where this was said, such as `teams:19:abc@thread.v2`: a reply to this
+  /// turn goes back here.
+  final AddressInExternalSystem address;
 }
 
 /// An entry the loop itself wrote on its own turn chain.
@@ -89,7 +99,7 @@ Stream<TrajectoryEvent> followTrajectoryHistory(
     }
     final decision = decodeDecision(item.kind, item.body);
     if (decision case EventAdmittedToMission(
-      reading: MessageSaid(:final node),
+      reading: MessageSaid(:final node, :final addressInExternalSystem),
       :final startsTurn,
     )) {
       return [
@@ -98,6 +108,7 @@ Stream<TrajectoryEvent> followTrajectoryHistory(
           author: node.author,
           text: node.text,
           startsTurn: startsTurn ?? false,
+          address: addressInExternalSystem,
         ),
       ];
     }

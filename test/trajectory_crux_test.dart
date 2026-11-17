@@ -66,8 +66,10 @@ void main() {
     // A returned entry for a DIFFERENT proposal, which must be ignored,
     // then the matching one.
     final wrongId = EntryId.of(utf8.encode(jsonEncode({'other': true})));
+    final wrongResultEntry = EntryId.of(utf8.encode('wrong-result-entry'));
     returnedController.add((
       proposed: wrongId,
+      resultEntry: wrongResultEntry,
       result: {'kind': 'refused', 'why': 'not this one'},
     ));
 
@@ -75,14 +77,21 @@ void main() {
 
     final writtenBytes = utf8.encode(jsonEncode(proposal));
     final id = EntryId.of(writtenBytes);
+    final resultEntry = EntryId.of(utf8.encode('the-matching-result-entry'));
     await Future<void>.delayed(const Duration(milliseconds: 50));
     returnedController.add((
       proposed: id,
+      resultEntry: resultEntry,
       result: {'kind': 'ran', 'output': 'ok'},
     ));
 
     final outcome = await outcomeFuture;
     expect(outcome, {'kind': 'ran', 'output': 'ok'});
+
+    // The result entry's own id is reachable by the proposal's place, not
+    // by the wrong proposal's, and only once.
+    expect(crux.resultEntryAt(1), resultEntry);
+    expect(crux.resultEntryAt(1), isNull);
 
     // The proposed entry really landed on the chain, after root.
     final entries = <Entry>[];

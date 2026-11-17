@@ -111,6 +111,10 @@ void main() {
     expect((found[0] as SaidByUser).hash, admittedHash);
     expect((found[0] as SaidByUser).text, 'hey are you there');
     expect((found[0] as SaidByUser).startsTurn, isTrue);
+    expect(
+      (found[0] as SaidByUser).address,
+      AddressInExternalSystem.parse('teams:c1'),
+    );
     expect(found[1], isA<TurnOnChain>());
     expect((found[1] as TurnOnChain).hash, turnHash);
 
