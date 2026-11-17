@@ -65,8 +65,11 @@ void main() {
 
     // The admission that admits the user's message, exactly as the
     // docking station would encode it.
+    final rawEventEntry = client.ObjectId.of(
+      Uint8List.fromList('event'.codeUnits),
+    );
     final admission = EventAdmittedToMission(
-      client.ObjectId.of(Uint8List.fromList('event'.codeUnits)),
+      rawEventEntry,
       by: DecidedBy.rules,
       reading: MessageSaid(
         addressInExternalSystem: AddressInExternalSystem.parse('teams:c1')!,
@@ -115,6 +118,7 @@ void main() {
       (found[0] as SaidByUser).address,
       AddressInExternalSystem.parse('teams:c1'),
     );
+    expect((found[0] as SaidByUser).rawEventEntry, rawEventEntry);
     expect(found[1], isA<TurnOnChain>());
     expect((found[1] as TurnOnChain).hash, turnHash);
 

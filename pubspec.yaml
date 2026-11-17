@@ -23,6 +23,10 @@ dependencies:
   is_shapes: ^0.5.0
   is_airlock_api: ^0.10.0
   is_effects: ^0.7.0
+  is_teams_module:
+    git:
+      url: https://github.com/intersyntactic/teams_module.git
+      ref: 92a617d463b324432d66b2448257ca633c33734f
 
 dev_dependencies:
   lints: ^6.1.0

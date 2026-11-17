@@ -48,6 +48,7 @@ final class SaidByUser extends TrajectoryEvent {
     required this.text,
     required this.startsTurn,
     required this.address,
+    required this.rawEventEntry,
   });
 
   /// The `event-admitted-to-mission` entry's own hash: what a
@@ -61,6 +62,15 @@ final class SaidByUser extends TrajectoryEvent {
   /// Where this was said, such as `teams:19:abc@thread.v2`: a reply to this
   /// turn goes back here.
   final AddressInExternalSystem address;
+
+  /// The relay's own `event` entry this admission decided (its `event`
+  /// field, confirmed against docking_station's own decision.dart and
+  /// decision_wire.dart by teams-module-e2): read back with
+  /// `LogbookReader.get` and `RelayedEvent.read`, its raw bytes hold
+  /// whatever a module needs that an admission's reading doesn't carry —
+  /// for Teams, the activity's `serviceUrl`, which a reply needs and which
+  /// has no fixed value across tenants.
+  final ObjectId rawEventEntry;
 }
 
 /// An entry the loop itself wrote on its own turn chain.
@@ -99,6 +109,7 @@ Stream<TrajectoryEvent> followTrajectoryHistory(
     }
     final decision = decodeDecision(item.kind, item.body);
     if (decision case EventAdmittedToMission(
+      :final event,
       reading: MessageSaid(:final node, :final addressInExternalSystem),
       :final startsTurn,
     )) {
@@ -109,6 +120,7 @@ Stream<TrajectoryEvent> followTrajectoryHistory(
           text: node.text,
           startsTurn: startsTurn ?? false,
           address: addressInExternalSystem,
+          rawEventEntry: event,
         ),
       ];
     }

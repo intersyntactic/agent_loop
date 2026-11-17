@@ -14,21 +14,39 @@
 /// trajectory kind is an int, read at airlock lib/src/airlock_subscriber.dart;
 /// one proposal per turn here, so each turn is its own place).
 ///
-/// Stops once it has the model's reply, or why the call was refused:
-/// posting it to Teams (task 10's next step) is not here yet.
+/// Once it has the model's reply, posts it to Teams: the triggering
+/// SaidByUser's rawEventEntry names the relay's own raw activity, read back
+/// to get the serviceUrl a reply needs (teams-module-e2, 2026-11-18 03:18 —
+/// confirmed against a live 201, not guessed, including that the body must
+/// be built key-'type'-before-'text' or the airlock's byte check refuses
+/// it). A call the airlock refuses, or one with no triggering SaidByUser in
+/// reach (shouldn't happen: a turn only starts from one), is logged, not
+/// thrown — the model's answer is already recorded either way.
 library;
 
 import 'dart:io';
 
 import 'package:agent_loop/agent_loop.dart';
+import 'package:is_docking_station/is_docking_station.dart'
+    show RelayedEvent;
 import 'package:is_effects/is_effects.dart'
-    show ModelName, ModelReply, ModelSignInName;
+    show ModelName, ModelReply, ModelSignInName, SignIn;
 import 'package:is_airlock_api/is_airlock_api.dart'
-    show Action, Crux, Done, Failed, ModelCall, Program, Result;
+    show Action, Crux, Done, Failed, ModelCall, Program, Projection, Result, WebRequest;
 import 'package:is_logbook/service.dart' show Kind;
 import 'package:is_logbook_client/is_logbook_client.dart'
-    show LogbookReader, ObjectId;
+    show GotEntry, LogbookReader, ObjectId;
 import 'package:is_shapes/is_shapes.dart' show EntryId;
+import 'package:is_teams_module/is_teams_module.dart'
+    show TeamsPost, teamsPostRequest, teamsRecordedEvent;
+
+/// Who every Teams reply goes out as (the origin itself comes from each
+/// activity's own serviceUrl, which teamsPostRequest reads — not fixed
+/// here, since it differs per tenant): from infra's own flight rules
+/// (enspyrco/infra intersyntactic-docking-station's
+/// what-may-leave-this-machine.json), fixed for this one demo integration,
+/// not yet a flag.
+final _teamsSignIn = SignIn.parse('cam-teams')!;
 
 /// Until the tool-intent-as-text design lands (task 10), a fixed, labelled
 /// placeholder: enough to exercise recording for real, not what the demo's
@@ -110,6 +128,62 @@ Future<void> main(List<String> args) async {
     switch (outcome) {
       case Done(:final value):
         stdout.writeln('agent_loop: model replied: ${value.text}');
+        final resultEntry = link.resultEntryAt(turn);
+        if (resultEntry == null) {
+          stderr.writeln(
+            'agent_loop: no result entry recorded for turn $turn, not '
+            'posting to Teams',
+          );
+          break;
+        }
+        final got = await reader.get(event.rawEventEntry);
+        if (got is! GotEntry) {
+          stderr.writeln(
+            'agent_loop: could not read the triggering event '
+            '${event.rawEventEntry.hex}: $got',
+          );
+          break;
+        }
+        final relayed = RelayedEvent.read(got.entry.id, got.entry.body);
+        final teamsEvent = relayed == null
+            ? null
+            : teamsRecordedEvent(relayed.bytes);
+        if (teamsEvent == null) {
+          stderr.writeln(
+            'agent_loop: the triggering event is not a Teams activity',
+          );
+          break;
+        }
+        final built = teamsPostRequest(
+          TeamsPost(
+            serviceUrl: teamsEvent.serviceUrl,
+            conversation: teamsEvent.conversation,
+            activity: {'type': 'message', 'text': value.text},
+          ),
+          _teamsSignIn,
+        );
+        final webRequest = WebRequest(
+          built.origin,
+          body: built.body!,
+          projection: Projection.teamsMessageFromModelReply,
+          drawnFrom: resultEntry,
+          method: built.method,
+          path: built.path,
+          signIn: built.signIn,
+          headers: built.headers,
+        );
+        final posted = Program.web.runOrRefusal<void>(
+          webRequest,
+          then: (_) => const Done(null),
+        );
+        switch (await posted.next(Crux.through(link, place: ++turn))) {
+          case Done():
+            stdout.writeln('agent_loop: posted the reply to Teams');
+          case Failed(:final why):
+            stderr.writeln('agent_loop: Teams post refused: $why');
+          case Action():
+            throw StateError('runOrRefusal returned an unresolved Action');
+        }
       case Failed(:final why):
         stdout.writeln('agent_loop: model call refused: $why');
       case Action():
