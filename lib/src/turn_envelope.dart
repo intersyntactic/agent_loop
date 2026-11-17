@@ -18,14 +18,13 @@ sealed class TurnProvenance {
 
   /// [json] as a provenance, as [toJson] wrote it. Throws a
   /// [FormatException] for anything else.
-  static TurnProvenance fromJson(Map<String, Object?> json) =>
-      switch (json['kind']) {
-        'fromArrival' => FromArrival(
-          EntryHash.parse(json['arrival']! as String)!,
-        ),
-        'own' => const Own(),
-        final kind => throw FormatException('not a provenance: $kind'),
-      };
+  static TurnProvenance fromJson(Map<String, Object?> json) => switch (json) {
+    {'kind': 'fromArrival', 'arrival': final String arrival} => FromArrival(
+      EntryHash.parse(arrival)!,
+    ),
+    {'kind': 'own'} => const Own(),
+    _ => throw FormatException('not a provenance: ${json['kind']}'),
+  };
 }
 
 /// This turn came from the witnessed arrival at [arrival], the journal
@@ -68,16 +67,15 @@ final class TurnEnvelope {
   /// anything else.
   static TurnEnvelope decode(Uint8List bytes) {
     final json = jsonDecode(utf8.decode(bytes));
-    if (json is! Map<String, Object?> ||
-        json['node'] is! Map<String, Object?> ||
-        json['provenance'] is! Map<String, Object?>) {
-      throw const FormatException('not a turn envelope');
+    if (json case {
+      'node': final Map<String, Object?> node,
+      'provenance': final Map<String, Object?> provenance,
+    }) {
+      return TurnEnvelope(
+        node: node,
+        provenance: TurnProvenance.fromJson(provenance),
+      );
     }
-    return TurnEnvelope(
-      node: json['node']! as Map<String, Object?>,
-      provenance: TurnProvenance.fromJson(
-        json['provenance']! as Map<String, Object?>,
-      ),
-    );
+    throw const FormatException('not a turn envelope');
   }
 }

@@ -221,6 +221,7 @@ final class _FrameParser {
         _buf.removeRange(0, nl + 1);
         if (line.startsWith('caught-up ')) {
           final head = line.substring('caught-up '.length);
+          // wire-ok: the journal's own sentinel for an empty journal.
           yield CaughtUp(head == 'start' ? null : EntryHash.parse(head));
           continue;
         }
