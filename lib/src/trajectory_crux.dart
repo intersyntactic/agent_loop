@@ -7,10 +7,10 @@
 /// `outcomeOfProposedActionKind` entry naming it, and gives back its
 /// result.
 ///
-/// Confirmed against airlock-api-04 directly, not guessed from the source
-/// alone: that entry's `proposed` field is `EntryId.of` the raw bytes of
-/// the proposal this writes — not the [EntryHash] the write's own `ok`
-/// answer gives, which depends on chain position and so differs from it.
+/// The airlock names a proposal by the [EntryHash] the write's own `ok`
+/// answer gives — the whole recorded entry, not a hash of the proposal's
+/// raw bytes alone, which carries no trace of where it landed on the
+/// chain and so never matches it.
 library;
 
 import 'dart:async';
