@@ -19,8 +19,8 @@
 /// root entry names the journey path's chain tip it started from, so an
 /// in-progress stream can be tied to a path before it closes.
 ///
-/// Not here yet: Teams arrivals, using the read side to recover state,
-/// taking a turn with a model, posting through the airlock.
+/// Not here yet: Teams events, using the read side to recover state,
+/// taking a turn with a model.
 library;
 
 export 'src/journal_reader.dart';

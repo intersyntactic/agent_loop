@@ -64,9 +64,9 @@ void main() {
   });
 
   test('an envelope round-trips its node and provenance', () async {
-    final arrival = EntryHash.of(Uint8List.fromList('arrival'.codeUnits));
+    final admitted = EntryHash.of(Uint8List.fromList('admitted'.codeUnits));
     final chain = JourneyPathChain(writer: writer, kind: kind);
-    await chain.append({'shape': 'Note', 'text': 'c'}, FromArrival(arrival));
+    await chain.append({'shape': 'Note', 'text': 'c'}, FromAdmission(admitted));
 
     // No read socket in this stage: read the object straight off disk
     // instead, through the journal this service itself writes.
@@ -78,8 +78,8 @@ void main() {
     final envelope = TurnEnvelope.decode(_stripHeader(object));
 
     expect(envelope.node, {'shape': 'Note', 'text': 'c'});
-    expect(envelope.provenance, isA<FromArrival>());
-    expect((envelope.provenance as FromArrival).arrival, arrival);
+    expect(envelope.provenance, isA<FromAdmission>());
+    expect((envelope.provenance as FromAdmission).admitted, admitted);
   });
 }
 

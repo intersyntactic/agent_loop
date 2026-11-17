@@ -9,8 +9,9 @@ import 'dart:typed_data';
 
 import 'package:is_journal/is_journal.dart' show EntryHash;
 
-/// Where a turn came from: a witnessed arrival ([FromArrival]), or the
-/// loop's own doing, with nothing that arrived to cause it ([Own]).
+/// Where a turn came from: the docking station's admission of an event
+/// ([FromAdmission]), or the loop's own doing, with nothing admitted to
+/// cause it ([Own]).
 sealed class TurnProvenance {
   const TurnProvenance();
 
@@ -19,29 +20,30 @@ sealed class TurnProvenance {
   /// [json] as a provenance, as [toJson] wrote it. Throws a
   /// [FormatException] for anything else.
   static TurnProvenance fromJson(Map<String, Object?> json) => switch (json) {
-    {'kind': 'fromArrival', 'arrival': final String arrival} => FromArrival(
-      EntryHash.parse(arrival)!,
-    ),
+    {'kind': 'fromAdmission', 'admitted': final String admitted} =>
+      FromAdmission(EntryHash.parse(admitted)!),
     {'kind': 'own'} => const Own(),
     _ => throw FormatException('not a provenance: ${json['kind']}'),
   };
 }
 
-/// This turn came from the witnessed arrival at [arrival], the journal
-/// entry hash of a `witnessed` entry.
-final class FromArrival extends TurnProvenance {
-  const FromArrival(this.arrival);
+/// This turn came from [admitted], the journal entry hash of the docking
+/// station's `admitted` entry — not the `event` it names, one hop further
+/// back, since the admission is what actually caused the loop to append
+/// this turn.
+final class FromAdmission extends TurnProvenance {
+  const FromAdmission(this.admitted);
 
-  final EntryHash arrival;
+  final EntryHash admitted;
 
   @override
   Map<String, Object?> toJson() => {
-    'kind': 'fromArrival',
-    'arrival': arrival.hex,
+    'kind': 'fromAdmission',
+    'admitted': admitted.hex,
   };
 }
 
-/// This turn is the loop's own doing: nothing arrived to cause it, such as
+/// This turn is the loop's own doing: nothing admitted caused it, such as
 /// the agent's own reply.
 final class Own extends TurnProvenance {
   const Own();
