@@ -9,7 +9,9 @@ environment:
   sdk: ^3.13.0
 
 dependencies:
+  checked_json: ^0.2.1
   is_content_id: ^0.2.0
+  is_conversation_shapes: ^0.8.2
   is_journal: ^0.8.0
   is_journal_client: ^0.1.1
   is_shapes: ^0.5.0

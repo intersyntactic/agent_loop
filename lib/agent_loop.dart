@@ -22,15 +22,18 @@
 /// [recordModelRequest] is the write side of a model call as an action
 /// (RULINGS: "what a step sends is in the airlock's record"): it records
 /// the exact rendered body as pieces, then a request naming them, before
-/// the airlock ever sees it.
+/// the airlock ever sees it. [turnsUpTo] reads a chain's turns back with
+/// the read side, and [renderRequestBody] flattens them into the one
+/// plain-text body `claude -p` takes.
 ///
 /// Not here yet: Teams arrivals, using the read side to recover state,
-/// rendering a request body from the chain, taking a turn with a model.
+/// taking a turn with a model.
 library;
 
 export 'src/journal_reader.dart';
 export 'src/journal_writer.dart';
 export 'src/journey_path_chain.dart';
 export 'src/model_request_recorder.dart';
+export 'src/model_request_render.dart';
 export 'src/reply_chunk_chain.dart';
 export 'src/turn_envelope.dart';
