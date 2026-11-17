@@ -1,9 +1,7 @@
-/// Records what a model call sends, before it is sent, on a [TrajectoryChain]
-/// (the live logbook record) — the same recording [recordModelRequest] does
-/// on a [JourneyPathChain] (the `is_journal` record), duplicated rather than
-/// shared because the two chains write to different services with
-/// different [EntryHash] types; they fold into one once agent_loop's own
-/// naming catches up with the mission/trajectory rename (task 23).
+/// Records what a model call sends, before it is sent, on a
+/// [TrajectoryChain] (the live logbook record): one [ModelRequestPiece]
+/// entry per text, then a [ModelRequest] entry naming each as a
+/// [RecordedText] and the turns it was built from.
 library;
 
 import 'dart:convert' show jsonEncode, utf8;

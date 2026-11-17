@@ -9,7 +9,8 @@
 /// rule says the agent should answer — the proposal a crux will carry out.
 /// It does not yet drive the crux through to a reply: that needs a model
 /// sign-in name this box hasn't given agent_loop yet (task 10), so this
-/// stops at the record, same as `recordModelRequest` always has.
+/// stops at the record, same as `recordModelRequestOnTrajectory` always
+/// has.
 library;
 
 import 'dart:io';

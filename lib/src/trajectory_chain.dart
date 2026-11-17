@@ -1,11 +1,6 @@
 /// A trajectory's own chain of turns, written to the logbook (the live
 /// record service, is_logbook — RULINGS: each trajectory has its own agent
 /// loop, and the loop writes conversation turns directly).
-///
-/// Separate from [JourneyPathChain]: that one speaks `is_journal`, which
-/// the live demo record no longer runs (logbook-07, 2026-11-17 UTC). The
-/// two will fold into one once agent_loop's own naming catches up with the
-/// mission/trajectory rename (task 23, Nick's call, not done here).
 library;
 
 import 'dart:async';
