@@ -5,14 +5,20 @@
 /// [MessageSaid.node] IS one) are read by [followTrajectory]; this reads
 /// both, merged in logbook order.
 ///
-/// What a prior agent reply looked like is not here yet: ReplyText turns
-/// are dead (a loop must not write one), so a prior reply has to be read
-/// from the `returned` entry of whichever proposal produced it, which this
-/// loop does not yet track across restarts.
+/// A prior agent reply is read from the airlock's outcome of the model call
+/// that produced it ([SaidByAgent]), never from a turn: a loop writes no
+/// reply turn of its own.
 library;
 
 import 'dart:async';
+import 'dart:convert' show jsonDecode, utf8;
 
+import 'package:is_airlock_api/is_airlock_api.dart'
+    show
+        ActionProposedByAgentLoop,
+        AskTheModel,
+        outcomeOfProposedActionKind,
+        readOutcomeOfProposedAction;
 import 'package:is_docking_station/is_docking_station.dart'
     show
         AddressInExternalSystem,
@@ -23,14 +29,17 @@ import 'package:is_docking_station/is_docking_station.dart'
 import 'package:is_logbook/service.dart' show Kind;
 import 'package:is_logbook_client/is_logbook_client.dart'
     show Entry, LogbookReader, ObjectId;
-import 'package:is_shapes/is_shapes.dart' show ActorId;
+import 'package:is_effects/is_effects.dart'
+    show Ran, Refused, decodeModelReply, decodeOutcome;
+import 'package:is_shapes/is_shapes.dart' show ActorId, EntryId;
 
 import 'model_request_render.dart' show renderRequestBody;
 import 'turn_envelope.dart';
 
 /// One event in a trajectory's history, in the order it actually happened:
-/// [SaidByUser] (an admitted message) or [TurnOnChain] (an entry the loop
-/// itself wrote).
+/// [SaidByUser] (an admitted message), [SaidByAgent] (the model's reply to
+/// a call the loop proposed) or [TurnOnChain] (an entry the loop itself
+/// wrote).
 sealed class TrajectoryEvent {
   const TrajectoryEvent({required this.hash});
 
@@ -74,6 +83,15 @@ final class SaidByUser extends TrajectoryEvent {
   final Entry? rawEvent;
 }
 
+/// The model's reply to a call this loop proposed, read from the airlock's
+/// outcome entry for it: [hash] is that outcome entry, which is what the
+/// model's later requests were built from.
+final class SaidByAgent extends TrajectoryEvent {
+  const SaidByAgent({required super.hash, required this.text});
+
+  final String text;
+}
+
 /// An entry the loop itself wrote on its own turn chain.
 final class TurnOnChain extends TrajectoryEvent {
   const TurnOnChain({required super.hash, required this.turn});
@@ -82,6 +100,8 @@ final class TurnOnChain extends TrajectoryEvent {
 }
 
 final _eventKind = Kind.parse('event')!;
+final _proposedKind = Kind.parse(ActionProposedByAgentLoop.kind)!;
+final _outcomeKind = Kind.parse(outcomeOfProposedActionKind)!;
 
 /// Every event on [chainRoot]'s trajectory, live, in logbook order: the
 /// loop's own turns (by the same chain-membership rule [followTrajectory]
@@ -97,6 +117,11 @@ final _eventKind = Kind.parse('event')!;
 /// [TrajectoryEvent] since nothing here knows what to render of one — that
 /// is a module's job, done with [SaidByUser.rawEvent] once it is read.
 ///
+/// The loop's own proposals arrive too, and the airlock's outcome of each:
+/// a proposal that asks the model is remembered by id, and an outcome
+/// naming one, if the model ran, becomes a [SaidByAgent]. Every other
+/// proposal and outcome (a refused call, a web request) is skipped.
+///
 /// Built with [Stream.expand] rather than `async*`, for the same reason as
 /// [followTrajectory]: `expand` passes a cancel straight through to
 /// [LogbookReader.subscribe], which an `async*` wrapper would not.
@@ -107,13 +132,29 @@ Stream<TrajectoryEvent> followTrajectoryHistory(
 }) {
   final onChain = <ObjectId>{chainRoot};
   final rawEvents = <ObjectId, Entry>{};
+  final modelCalls = <EntryId>{};
   final kinds = {
     turnKind,
     DecisionEntryKind.eventAdmittedToMission,
     _eventKind,
+    _proposedKind,
+    _outcomeKind,
   };
   return reader.subscribe(kinds: kinds).expand((item) {
     if (item is! Entry) return const [];
+    if (item.kind == _proposedKind) {
+      if (ActionProposedByAgentLoop.read(_jsonOrNull(item.body))
+          case ActionProposedByAgentLoop(program: AskTheModel())) {
+        modelCalls.add(EntryId.parse(item.id.hex)!);
+      }
+      return const [];
+    }
+    if (item.kind == _outcomeKind) {
+      final reply = _modelReplyIn(item.body, modelCalls);
+      return reply == null
+          ? const []
+          : [SaidByAgent(hash: item.id, text: reply)];
+    }
     if (item.kind == turnKind) {
       final belongs = item.previous != null && onChain.contains(item.previous);
       if (!belongs) return const [];
@@ -145,6 +186,29 @@ Stream<TrajectoryEvent> followTrajectoryHistory(
   });
 }
 
+/// The model's reply text in [body], an outcome entry's, when it answers
+/// one of [modelCalls] and the model ran; null otherwise.
+String? _modelReplyIn(List<int> body, Set<EntryId> modelCalls) {
+  final outcome = readOutcomeOfProposedAction(_jsonOrNull(body));
+  if (outcome == null || !modelCalls.contains(outcome.proposed)) return null;
+  try {
+    return switch (decodeOutcome(outcome.result, decodeModelReply)) {
+      Ran(:final output) => output.text,
+      Refused() => null,
+    };
+  } on FormatException {
+    return null;
+  }
+}
+
+Object? _jsonOrNull(List<int> body) {
+  try {
+    return jsonDecode(utf8.decode(body));
+  } on FormatException {
+    return null;
+  }
+}
+
 /// [history], oldest first, as one plain-text body: one line per event.
 /// [TurnOnChain] renders through [renderRequestBody]'s own node-shape
 /// cases; since ReplyText turns are dead and no `UserSaid` ever arrives
@@ -156,6 +220,7 @@ String renderTrajectoryHistory(List<TrajectoryEvent> history) => history
     .map(
       (event) => switch (event) {
         SaidByUser(:final text) => 'User: $text',
+        SaidByAgent(:final text) => 'Agent: $text',
         TurnOnChain(:final turn) => renderRequestBody([turn]),
       },
     )
