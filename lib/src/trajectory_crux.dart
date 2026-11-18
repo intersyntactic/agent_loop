@@ -1,13 +1,10 @@
-/// The loop's own crux (RULINGS,
-/// https://github.com/enspyrco/intersyntactic/pull/1168: "its agent loop,
-/// the one holder that extends the trajectory" — Nick, 2026-11-18 00:30,
-/// confirmed this is agent_loop's job, not a separate caller's). Proposes
-/// an action by writing an [ActionProposedByAgentLoop] entry on the
+/// The loop's own crux: the one holder that extends the trajectory.
+/// Proposes an action by writing an [ActionProposedByAgentLoop] entry on the
 /// trajectory's own chain, then waits for the airlock's
 /// `outcomeOfProposedActionKind` entry naming it, and gives back its
 /// result.
 ///
-/// The airlock names a proposal by the [EntryHash] the write's own `ok`
+/// The airlock names a proposal by the [ObjectId] the write's own `ok`
 /// answer gives — the whole recorded entry, not a hash of the proposal's
 /// raw bytes alone, which carries no trace of where it landed on the
 /// chain and so never matches it.

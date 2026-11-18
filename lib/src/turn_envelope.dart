@@ -7,7 +7,7 @@ library;
 import 'dart:convert';
 import 'dart:typed_data';
 
-import 'package:is_journal/is_journal.dart' show EntryHash;
+import 'package:is_logbook_client/is_logbook_client.dart' show ObjectId;
 
 /// Where a turn came from: the docking station's admission of an event
 /// ([FromAdmission]), or the loop's own doing, with nothing admitted to
@@ -21,20 +21,20 @@ sealed class TurnProvenance {
   /// [FormatException] for anything else.
   static TurnProvenance fromJson(Map<String, Object?> json) => switch (json) {
     {'kind': 'fromAdmission', 'admitted': final String admitted} =>
-      FromAdmission(EntryHash.parse(admitted)!),
+      FromAdmission(ObjectId.parse(admitted)!),
     {'kind': 'own'} => const Own(),
     _ => throw FormatException('not a provenance: ${json['kind']}'),
   };
 }
 
-/// This turn came from [admitted], the journal entry hash of the docking
+/// This turn came from [admitted], the logbook entry id of the docking
 /// station's `admitted` entry — not the `event` it names, one hop further
 /// back, since the admission is what actually caused the loop to append
 /// this turn.
 final class FromAdmission extends TurnProvenance {
   const FromAdmission(this.admitted);
 
-  final EntryHash admitted;
+  final ObjectId admitted;
 
   @override
   Map<String, Object?> toJson() => {
