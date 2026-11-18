@@ -34,7 +34,11 @@ import 'turn_envelope.dart';
 /// [SaidByUser] (an admitted message) or [TurnOnChain] (an entry the loop
 /// itself wrote).
 sealed class TrajectoryEvent {
-  const TrajectoryEvent();
+  const TrajectoryEvent({required this.hash});
+
+  /// The logbook entry this event was read from: what a
+  /// [ModelRequest.builtFrom] names for it.
+  final ObjectId hash;
 }
 
 /// A message the docking station admitted, read from its
@@ -43,7 +47,7 @@ sealed class TrajectoryEvent {
 /// something admitted as context only.
 final class SaidByUser extends TrajectoryEvent {
   const SaidByUser({
-    required this.hash,
+    required super.hash,
     required this.author,
     required this.text,
     required this.startsTurn,
@@ -51,10 +55,6 @@ final class SaidByUser extends TrajectoryEvent {
     required this.rawEvent,
   });
 
-  /// The `event-admitted-to-mission` entry's own hash: what a
-  /// [ModelRequest.builtFrom] names for this event, since it is where this
-  /// text actually came from, not a turn.
-  final ObjectId hash;
   final ActorId author;
   final String text;
   final bool startsTurn;
@@ -80,9 +80,8 @@ final class SaidByUser extends TrajectoryEvent {
 
 /// An entry the loop itself wrote on its own turn chain.
 final class TurnOnChain extends TrajectoryEvent {
-  const TurnOnChain(this.hash, this.turn);
+  const TurnOnChain({required super.hash, required this.turn});
 
-  final ObjectId hash;
   final TurnEnvelope turn;
 }
 
@@ -124,7 +123,7 @@ Stream<TrajectoryEvent> followTrajectoryHistory(
       final belongs = item.previous != null && onChain.contains(item.previous);
       if (!belongs) return const [];
       onChain.add(item.id);
-      return [TurnOnChain(item.id, TurnEnvelope.decode(item.body))];
+      return [TurnOnChain(hash: item.id, turn: TurnEnvelope.decode(item.body))];
     }
     if (item.kind == _eventKind) {
       rawEvents[item.id] = item;

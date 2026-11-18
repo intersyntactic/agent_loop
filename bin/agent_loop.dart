@@ -113,13 +113,7 @@ Future<void> main(List<String> args) async {
       chain,
       systemPrompt: _placeholderSystemPrompt,
       request: request,
-      builtFrom: [
-        for (final e in history)
-          switch (e) {
-            SaidByUser(:final hash) => hash,
-            TurnOnChain(:final hash) => hash,
-          },
-      ],
+      builtFrom: [for (final e in history) e.hash],
     );
     stdout.writeln('agent_loop: recorded model-request ${requestHash.hex}');
 
