@@ -1,16 +1,14 @@
 /// A trajectory's history as the loop actually sees it, live: the user's
 /// own messages arrive as `event-admitted-to-mission` entries (the docking
-/// station's own kind), never as turns on the loop's chain — confirmed
-/// directly with docking-station-cc, 2026-11-18, not guessed. Only the
-/// loop's own turn-chain entries (confirmed to still carry `UserSaid`'s
-/// data, since [MessageSaid.node] IS one) are read by [followTrajectory];
-/// this reads both, merged in logbook order.
+/// station's own kind), never as turns on the loop's chain. Only the
+/// loop's own turn-chain entries (still carrying `UserSaid`'s data, since
+/// [MessageSaid.node] IS one) are read by [followTrajectory]; this reads
+/// both, merged in logbook order.
 ///
 /// What a prior agent reply looked like is not here yet: ReplyText turns
-/// are dead (RULINGS; Nick, 2026-11-18 00:32 — a loop must not write one),
-/// so a prior reply has to be read from the `returned` entry of whichever
-/// proposal produced it, which this loop does not yet track across
-/// restarts.
+/// are dead (a loop must not write one), so a prior reply has to be read
+/// from the `returned` entry of whichever proposal produced it, which this
+/// loop does not yet track across restarts.
 library;
 
 import 'dart:async';
@@ -64,12 +62,10 @@ final class SaidByUser extends TrajectoryEvent {
   final AddressInExternalSystem address;
 
   /// The relay's own `event` entry this admission decided (its `event`
-  /// field, confirmed against docking_station's own decision.dart and
-  /// decision_wire.dart by teams-module-e2): loop_launcher delivers it in
-  /// this same feed, immediately before the admission that names it
-  /// (confirmed against source by loop-launcher-5b, 2026-11-18 03:35 — the
-  /// feed answers only `subscribe`, never `get`, so there is no other way
-  /// to reach it). Null only if it somehow did not arrive first, which the
+  /// field): loop_launcher delivers it in this same feed, immediately
+  /// before the admission that names it. The feed answers only
+  /// `subscribe`, never `get`, so there is no other way to reach it. Null
+  /// only if it somehow did not arrive first, which the
   /// feed's own contract says cannot happen. Pass its `id` and `body` to
   /// docking_station's `RelayedEvent.read` for whatever a module needs that
   /// an admission's reading doesn't carry — for Teams, the activity's
@@ -96,9 +92,8 @@ final _eventKind = Kind.parse('event')!;
 /// loop has nothing to render for it yet.
 ///
 /// The relay's raw `event` entries arrive too, each immediately before the
-/// admission that names it (loop_launcher's contract, confirmed by
-/// loop-launcher-5b, 2026-11-18 03:35): held here, by id, until that
-/// admission turns up to claim it, never emitted as their own
+/// admission that names it (loop_launcher's contract): held here, by id,
+/// until that admission turns up to claim it, never emitted as their own
 /// [TrajectoryEvent] since nothing here knows what to render of one — that
 /// is a module's job, done with [SaidByUser.rawEvent] once it is read.
 ///
@@ -153,9 +148,9 @@ Stream<TrajectoryEvent> followTrajectoryHistory(
 /// [history], oldest first, as one plain-text body: one line per event.
 /// [TurnOnChain] renders through [renderRequestBody]'s own node-shape
 /// cases; since ReplyText turns are dead and no `UserSaid` ever arrives
-/// this way any more (it arrives as [SaidByUser] instead), nothing may
-/// actually land here tonight — kept for whatever the loop's own chain
-/// does carry once that's decided. Throws [FormatException] for a
+/// this way any more (it arrives as [SaidByUser] instead), nothing
+/// currently reaches this case — kept for whatever the loop's own chain
+/// ends up carrying. Throws [FormatException] for a
 /// [TurnOnChain] whose node shape it doesn't know how to render.
 String renderTrajectoryHistory(List<TrajectoryEvent> history) => history
     .map(
