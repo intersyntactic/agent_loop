@@ -1,41 +1,54 @@
-// Proves ReplyChunkChain against a real JournalService over a real Unix
-// socket: the chain's root is an attached root (is_journal 0.9.0) naming
-// its parent as the body's first line, enforced by the service itself, not
-// a claim in JSON a reader has to trust — a chunk chain only attaches to a
-// path the sender actually owns. Later entries chain normally, as bare
-// nodes with no envelope.
+// Proves ReplyChunkChain against a real LogbookService over a real Unix
+// socket: the chain's root is an attached root naming its parent as the
+// body's first line, enforced by the service itself, not a claim in JSON a
+// reader has to trust — a chunk chain only attaches to a trajectory the
+// sender actually owns. Later entries chain normally, as bare nodes with no
+// envelope.
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:agent_loop/agent_loop.dart';
-import 'package:is_journal/is_journal.dart';
-import 'package:is_journal/service.dart';
+import 'package:is_logbook/is_logbook.dart';
+import 'package:is_logbook/service.dart';
+import 'package:is_logbook_client/is_logbook_client.dart' show LogbookReader;
+import 'package:is_logbook_client/is_logbook_client.dart' as client;
 import 'package:test/test.dart';
 
 void main() {
   late Directory tmp;
-  late JournalService service;
-  late JournalWriter writer;
+  late LogbookService service;
+  late client.LogbookWriter rawWriter;
+  late LogbookWriter writer;
+  late LogbookReader reader;
   late int uid;
   final turnKind = Kind.parse('turn')!;
   final chunkKind = Kind.parse('reply-chunk')!;
+  // Never checked, only well-formed: the service never reads this field
+  // back as anything but an opaque hex string.
+  final trajectoryUnderTest = client.ObjectId.of(
+    Uint8List.fromList('trajectory-under-test'.codeUnits),
+  ).hex;
 
   setUp(() async {
     tmp = Directory.systemTemp.createTempSync('agent_loop_chunk_test_');
     uid = int.parse(Process.runSync('id', ['-u']).stdout.toString().trim());
     final senderTable = SenderTable.parse(
       Uint8List.fromList(
-        '$uid turn reply-chunk users-assigned-to-journey-path\nattaching: reply-chunk\n'
+        '$uid turn reply-chunk users-assigned-to-trajectory\n'
+                'attaching: reply-chunk\n'
             .codeUnits,
       ),
     );
-    service = await JournalService.start(
-      Journal.open(Directory('${tmp.path}/journal'))!,
+    service = await LogbookService.start(
+      Logbook.open(Directory('${tmp.path}/logbook'))!,
       senderTable,
-      File('${tmp.path}/journal.sock'),
+      File('${tmp.path}/logbook.sock'),
+      readSocket: File('${tmp.path}/logbook.read.sock'),
     );
-    writer = JournalWriter('${tmp.path}/journal.sock');
+    rawWriter = client.LogbookWriter('${tmp.path}/logbook.sock');
+    writer = LogbookWriter('${tmp.path}/logbook.sock');
+    reader = LogbookReader('${tmp.path}/logbook.read.sock');
   });
 
   tearDown(() async {
@@ -43,33 +56,39 @@ void main() {
     tmp.deleteSync(recursive: true);
   });
 
-  /// Assigns a path to this test's own uid (so it owns the path's chain),
-  /// then appends one `turn` entry on it, to use as a chunk chain's parent.
-  Future<EntryHash> newOwnedTurn() async {
-    final random = EntryHash.of(
+  /// Assigns a trajectory to this test's own uid (so it owns the
+  /// trajectory's chain), then appends one `turn` entry on it, to use as a
+  /// chunk chain's parent.
+  Future<client.ObjectId> newOwnedTurn() async {
+    final random = client.ObjectId.of(
       Uint8List.fromList('${DateTime.now().microsecondsSinceEpoch}'.codeUnits),
     );
-    final root = await writer.append(
-      Kind.parse('users-assigned-to-journey-path')!,
-      null,
-      Uint8List.fromList(
-        utf8.encode(
-          jsonEncode({
-            'journeyPath': random.hex,
-            'journey': random.hex,
-            'loopUser': '$uid',
-            // A path's two users are never the same user; any other number
-            // works here, since nothing in this test acts as the suit.
-            'suit': '${uid + 1}',
-          }),
-        ),
+    final assigned = await rawWriter.write(
+      Kind.usersAssignedToTrajectory,
+      utf8.encode(
+        jsonEncode({
+          'trajectory': trajectoryUnderTest,
+          'mission': random.hex,
+          'loopUser': '$uid',
+          // A trajectory's two users are never the same user; any other
+          // number works here, since nothing in this test acts as the suit.
+          'suit': '${uid + 1}',
+        }),
       ),
     );
-    return writer.append(
+    final root = (assigned as client.Written).entry;
+    final turn = await rawWriter.write(
       turnKind,
-      root,
-      Uint8List.fromList(utf8.encode('{"shape":"UserSaid"}')),
+      utf8.encode('{"shape":"UserSaid"}'),
+      previous: root,
     );
+    return (turn as client.Written).entry;
+  }
+
+  /// [id]'s recorded body, read back through the real read socket.
+  Future<Uint8List> bodyOf(client.ObjectId id) async {
+    final got = await reader.get(id);
+    return (got as client.GotEntry).entry.body;
   }
 
   test('the root names its parent as the body\'s first line', () async {
@@ -82,7 +101,7 @@ void main() {
     final id = await chain.append({'shape': 'ReplyChunk', 'text': 'hel'});
 
     expect(chain.tip, id);
-    final body = utf8.decode(_lastEntryBody(tmp, service));
+    final body = utf8.decode(await bodyOf(id));
     expect(body, '${parent.hex}\n{"shape":"ReplyChunk","text":"hel"}');
   });
 
@@ -98,7 +117,7 @@ void main() {
 
     expect(chain.tip, second);
     expect(
-      utf8.decode(_lastEntryBody(tmp, service)),
+      utf8.decode(await bodyOf(second)),
       jsonEncode({'shape': 'ReplyChunk', 'text': 'lo'}),
     );
   });
@@ -135,7 +154,9 @@ void main() {
   });
 
   test('the service refuses a root naming an unknown parent', () async {
-    final unknown = EntryHash.of(Uint8List.fromList('never written'.codeUnits));
+    final unknown = client.ObjectId.of(
+      Uint8List.fromList('never written'.codeUnits),
+    );
     final chain = ReplyChunkChain(
       writer: writer,
       kind: chunkKind,
@@ -145,7 +166,7 @@ void main() {
     expect(
       () => chain.append({'shape': 'ReplyChunk', 'text': 'hel'}),
       throwsA(
-        isA<JournalWriteRefused>().having(
+        isA<LogbookWriteRefused>().having(
           (e) => e.why,
           'why',
           contains('unknown'),
@@ -154,22 +175,21 @@ void main() {
     );
   });
 
-  test('the service refuses a root naming a parent on no path', () async {
-    final unowned = await writer.append(
+  test('the service refuses a root naming a parent on no trajectory', () async {
+    final unowned = await rawWriter.write(
       turnKind,
-      null,
-      Uint8List.fromList(utf8.encode('{"shape":"UserSaid"}')),
+      utf8.encode('{"shape":"UserSaid"}'),
     );
     final chain = ReplyChunkChain(
       writer: writer,
       kind: chunkKind,
-      parent: unowned,
+      parent: (unowned as client.Written).entry,
     );
 
     expect(
       () => chain.append({'shape': 'ReplyChunk', 'text': 'hel'}),
       throwsA(
-        isA<JournalWriteRefused>().having(
+        isA<LogbookWriteRefused>().having(
           (e) => e.why,
           'why',
           contains('parent-unowned'),
@@ -177,21 +197,4 @@ void main() {
       ),
     );
   });
-}
-
-/// The last entry's body: its object's bytes with the `<kind>\n<previous>\n`
-/// header stripped.
-Uint8List _lastEntryBody(Directory tmp, JournalService service) {
-  final entries = File('${tmp.path}/journal/entries').readAsBytesSync();
-  final last = JournalEntry.parse(
-    entries.sublist(entries.length - JournalEntry.length),
-  )!;
-  final object = service.journal.get(last.object)!;
-  return _stripHeader(object);
-}
-
-Uint8List _stripHeader(Uint8List object) {
-  final first = object.indexOf(0x0a);
-  final second = object.indexOf(0x0a, first + 1);
-  return Uint8List.sublistView(object, second + 1);
 }

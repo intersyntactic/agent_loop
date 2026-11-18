@@ -7,7 +7,7 @@
 /// `outcomeOfProposedActionKind` entry naming it, and gives back its
 /// result.
 ///
-/// The airlock names a proposal by the [EntryHash] the write's own `ok`
+/// The airlock names a proposal by the [ObjectId] the write's own `ok`
 /// answer gives — the whole recorded entry, not a hash of the proposal's
 /// raw bytes alone, which carries no trace of where it landed on the
 /// chain and so never matches it.

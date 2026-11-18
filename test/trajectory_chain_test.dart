@@ -18,6 +18,11 @@ void main() {
   late LogbookReader reader;
   late String uid;
   final turnKind = Kind.parse('turn')!;
+  // Never checked, only well-formed: the service never reads this field
+  // back as anything but an opaque hex string.
+  final trajectoryUnderTest = client.ObjectId.of(
+    Uint8List.fromList('trajectory-under-test'.codeUnits),
+  ).hex;
 
   setUp(() async {
     tmp = Directory.systemTemp.createTempSync('agent_loop_trajectory_test_');
@@ -62,7 +67,7 @@ void main() {
 
   test('finds the latest assignment naming this loop user', () async {
     final root = await assign(
-      trajectory: EntryHash.origin.hex,
+      trajectory: trajectoryUnderTest,
       mission: client.ObjectId.of(Uint8List.fromList('mission-a'.codeUnits))
           .hex,
       loopUser: '1001',
@@ -74,7 +79,7 @@ void main() {
 
   test('refuses when no assignment names this loop user', () async {
     await assign(
-      trajectory: EntryHash.origin.hex,
+      trajectory: trajectoryUnderTest,
       mission: client.ObjectId.of(Uint8List.fromList('mission-b'.codeUnits))
           .hex,
       loopUser: '1001',
@@ -90,7 +95,7 @@ void main() {
   test('follows only this trajectory\'s own turns, live, with their '
       'hashes', () async {
     final root = await assign(
-      trajectory: EntryHash.origin.hex,
+      trajectory: trajectoryUnderTest,
       mission: client.ObjectId.of(Uint8List.fromList('mission-c'.codeUnits))
           .hex,
       loopUser: uid,

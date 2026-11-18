@@ -4,17 +4,18 @@
 ///
 /// [TrajectoryChain] is one trajectory's sequence of turns, written to the
 /// logbook (the live record service, `is_logbook`), each in a
-/// [TurnEnvelope] naming its [TurnProvenance] — a turn's [TurnId] is its
-/// logbook entry hash, read back as a [TurnId], not a second name derived
+/// [TurnEnvelope] naming its [TurnProvenance] — a turn's own id is its
+/// logbook entry hash, read back as that same id, not a second name derived
 /// from it. [findTrajectoryRoot] and [followTrajectory] are its read side.
 ///
-/// [JournalWriter] and [JournalReader] speak `is_journal`'s own write and
-/// read sockets, kept for [ReplyChunkChain]: a streamed reply's own chain,
-/// separate from its trajectory's. A chunk isn't a turn and gets no
-/// [TurnId], only its own entry hash (RULINGS: each chain "holds only that
-/// loop's turns; each event and the airlock's entries have chains of their
-/// own"). Its root entry names the trajectory chain's tip it started from,
-/// so an in-progress stream can be tied to a trajectory before it closes.
+/// [LogbookWriter] speaks `is_logbook_client`'s write socket: both
+/// [TrajectoryChain] and [ReplyChunkChain] send their entries through it,
+/// each to its own chain. A reply's chunk chain is separate from its
+/// trajectory's: a chunk isn't a turn and gets no turn id, only its own
+/// entry hash (RULINGS: each chain "holds only that loop's turns; each
+/// event and the airlock's entries have chains of their own"). Its root
+/// entry names the trajectory chain's tip it started from, so an
+/// in-progress stream can be tied to a trajectory before it closes.
 ///
 /// [recordModelRequestOnTrajectory] is the write side of a model call as an
 /// action (RULINGS: "what a step sends is in the airlock's record"): it
@@ -23,8 +24,6 @@
 /// back off the chain into the one plain-text body `claude -p` takes.
 library;
 
-export 'src/journal_reader.dart';
-export 'src/journal_writer.dart';
 export 'src/logbook_writer.dart';
 export 'src/model_request_render.dart';
 export 'src/reply_chunk_chain.dart';

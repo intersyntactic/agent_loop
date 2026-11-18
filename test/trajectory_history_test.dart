@@ -25,6 +25,11 @@ void main() {
   late LogbookReader reader;
   late String uid;
   final turnKind = Kind.parse('turn')!;
+  // Never checked, only well-formed: the service never reads this field
+  // back as anything but an opaque hex string.
+  final trajectoryUnderTest = client.ObjectId.of(
+    Uint8List.fromList('trajectory-under-test'.codeUnits),
+  ).hex;
 
   setUp(() async {
     tmp = Directory.systemTemp.createTempSync('agent_loop_history_test_');
@@ -56,7 +61,7 @@ void main() {
     final rootResult = await rawWriter.write(
       Kind.usersAssignedToTrajectory,
       Uint8List.fromList(
-        '{"trajectory":"${EntryHash.origin.hex}",'
+        '{"trajectory":"$trajectoryUnderTest",'
                 '"mission":"${client.ObjectId.of(Uint8List.fromList('m'.codeUnits)).hex}",'
                 '"loopUser":"$uid","suit":"1002"}'
             .codeUnits,

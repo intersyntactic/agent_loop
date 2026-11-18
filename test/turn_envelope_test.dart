@@ -3,7 +3,7 @@
 import 'dart:typed_data';
 
 import 'package:agent_loop/agent_loop.dart';
-import 'package:is_journal/is_journal.dart' show EntryHash;
+import 'package:is_logbook_client/is_logbook_client.dart' show ObjectId;
 import 'package:test/test.dart';
 
 void main() {
@@ -21,7 +21,7 @@ void main() {
 
   test('an envelope with FromAdmission provenance round-trips its admitted '
       'hash', () {
-    final admitted = EntryHash.of(Uint8List.fromList('admitted'.codeUnits));
+    final admitted = ObjectId.of(Uint8List.fromList('admitted'.codeUnits));
     final envelope = TurnEnvelope(
       node: const {'shape': 'Note', 'text': 'c'},
       provenance: FromAdmission(admitted),
