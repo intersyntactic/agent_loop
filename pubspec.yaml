@@ -1,7 +1,7 @@
 name: agent_loop
 description: >-
-  Each journey path's own agent loop: it writes conversation turns straight
-  to the journal (RULINGS), starting with the Teams module's arrivals.
+  Each trajectory's own agent loop: it writes conversation turns straight
+  to the logbook (RULINGS), starting with the Teams module's arrivals.
 repository: https://github.com/intersyntactic/agent_loop
 publish_to: none
 
@@ -9,9 +9,21 @@ environment:
   sdk: ^3.13.0
 
 dependencies:
+  checked_json: ^0.2.1
+  is_content_id: ^0.2.0
+  is_conversation_shapes: ^0.8.3
   is_journal: ^0.9.0
   is_journal_client: ^0.1.2
-  is_shapes: ^0.4.0
+  is_docking_station: ^0.1.0
+  is_logbook: ^0.2.1
+  is_logbook_client: ^0.2.0
+  is_shapes: ^0.6.0
+  is_airlock_api: ^0.10.1
+  is_effects: ^0.8.0
+  is_teams_module:
+    git:
+      url: https://github.com/intersyntactic/teams_module.git
+      ref: c2bd93ee76afb033bc0c2d6607b3acf79b93134a
 
 dev_dependencies:
   lints: ^6.1.0

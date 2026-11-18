@@ -2,7 +2,7 @@
 /// client: one connection, one request — a kind, the entry before it in
 /// its chain, and its bytes — one line back.
 ///
-/// Keeps the shape [JourneyPathChain] and [ReplyChunkChain] already call
+/// Keeps the shape [ReplyChunkChain] already calls
 /// (an [EntryHash] back, or a thrown failure) rather than
 /// `is_journal_client`'s own result-returning [WriteResult], so neither
 /// needed to change when this moved off a hand-rolled socket client.
