@@ -2,10 +2,9 @@
 /// client: one connection, one request — a kind, the entry before it in
 /// its chain, and its bytes — one line back.
 ///
-/// Keeps the same shape [JournalWriter] exposes (an [ObjectId] back, or a
-/// thrown failure) rather than `is_logbook_client`'s own result-returning
-/// [WriteResult], so [TrajectoryChain] can call either without caring which
-/// logbook service it is writing to.
+/// Returns an [ObjectId] or throws a [LogbookWriteFailure], rather than
+/// `is_logbook_client`'s own result-returning [WriteResult], so a chain's
+/// append either moves its tip or fails.
 library;
 
 import 'package:is_logbook_client/is_logbook_client.dart' as client;
