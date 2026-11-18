@@ -1,5 +1,5 @@
 // Proves TurnEnvelope and TurnProvenance round-trip through encode/decode:
-// both are pure, so no journal or logbook service is needed to prove it.
+// both are pure, so no logbook service is needed to prove it.
 import 'dart:typed_data';
 
 import 'package:agent_loop/agent_loop.dart';
