@@ -1,8 +1,5 @@
-/// The loop's own crux (RULINGS,
-/// https://github.com/enspyrco/intersyntactic/pull/1168: "its agent loop,
-/// the one holder that extends the trajectory" — Nick, 2026-11-18 00:30,
-/// confirmed this is agent_loop's job, not a separate caller's). Proposes
-/// an action by writing an [ActionProposedByAgentLoop] entry on the
+/// The loop's own crux: the one holder that extends the trajectory.
+/// Proposes an action by writing an [ActionProposedByAgentLoop] entry on the
 /// trajectory's own chain, then waits for the airlock's
 /// `outcomeOfProposedActionKind` entry naming it, and gives back its
 /// result.

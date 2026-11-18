@@ -1,4 +1,4 @@
-/// Each trajectory's own agent loop (RULINGS): it holds only the model
+/// Each trajectory's own agent loop: it holds only the model
 /// sign-ins its rules allow and calls the model itself, and it writes the
 /// conversation's turns straight to the logbook.
 ///
@@ -12,16 +12,16 @@
 /// [TrajectoryChain] and [ReplyChunkChain] send their entries through it,
 /// each to its own chain. A reply's chunk chain is separate from its
 /// trajectory's: a chunk isn't a turn and gets no turn id, only its own
-/// entry hash (RULINGS: each chain "holds only that loop's turns; each
-/// event and the airlock's entries have chains of their own"). Its root
-/// entry names the trajectory chain's tip it started from, so an
+/// entry hash — each role keeps its own chain rather than sharing one. Its
+/// root entry names the trajectory chain's tip it started from, so an
 /// in-progress stream can be tied to a trajectory before it closes.
 ///
 /// [recordModelRequestOnTrajectory] is the write side of a model call as an
-/// action (RULINGS: "what a step sends is in the airlock's record"): it
-/// records the exact rendered body as pieces, then a request naming them,
-/// before the airlock ever sees it. [renderRequestBody] flattens turns read
-/// back off the chain into the one plain-text body `claude -p` takes.
+/// action: it records the exact rendered body as pieces, then a request
+/// naming them, before the airlock ever sees it, so the airlock's own
+/// record of what the step sent can point at it by hash rather than
+/// duplicate it. [renderRequestBody] flattens turns read back off the
+/// chain into the one plain-text body `claude -p` takes.
 library;
 
 export 'src/logbook_writer.dart';

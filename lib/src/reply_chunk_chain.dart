@@ -1,7 +1,6 @@
-/// A reply's own chain of chunks, separate from its trajectory's chain
-/// (RULINGS: "a trajectory's chain... holds only that loop's turns; each
-/// event and the airlock's entries have chains of their own and refer to
-/// others by hash"). A chunk isn't a turn and has no turn id of its own: the
+/// A reply's own chain of chunks, separate from its trajectory's chain:
+/// each role keeps its own chain and refers to others by hash, rather than
+/// sharing one. A chunk isn't a turn and has no turn id of its own: the
 /// turn that closes a streamed reply names this chain's tip by hash
 /// instead.
 ///
@@ -11,8 +10,7 @@
 /// that follows. The logbook checks that [parent] is on an entry its sender
 /// owns and gives this chain to the same trajectory, refusing otherwise
 /// (`no-parent`, `unknown (hash)`, `parent-unowned`, `not-owner`) —
-/// enforced by the service, not trusted from a body's own claim, unlike
-/// the JSON-embedded field this replaced.
+/// enforced by the service, not trusted from a body's own claim.
 library;
 
 import 'dart:async';
