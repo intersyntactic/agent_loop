@@ -21,11 +21,6 @@
 /// records the exact rendered body as pieces, then a request naming them,
 /// before the airlock ever sees it. [renderRequestBody] flattens turns read
 /// back off the chain into the one plain-text body `claude -p` takes.
-///
-/// Not here yet: Teams arrivals, using the read side to recover state,
-/// taking a turn with a model (bin/agent_loop.dart stops at the record,
-/// same as recordModelRequestOnTrajectory always has — who reaches the
-/// crux is task 10, Nick's call).
 library;
 
 export 'src/journal_reader.dart';

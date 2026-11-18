@@ -19,17 +19,17 @@ void main() {
     expect(decoded.provenance, isA<Own>());
   });
 
-  test('an envelope with FromArrival provenance round-trips its arrival '
+  test('an envelope with FromAdmission provenance round-trips its admitted '
       'hash', () {
-    final arrival = EntryHash.of(Uint8List.fromList('arrival'.codeUnits));
+    final admitted = EntryHash.of(Uint8List.fromList('admitted'.codeUnits));
     final envelope = TurnEnvelope(
       node: const {'shape': 'Note', 'text': 'c'},
-      provenance: FromArrival(arrival),
+      provenance: FromAdmission(admitted),
     );
 
     final decoded = TurnEnvelope.decode(envelope.encode());
 
-    expect(decoded.provenance, isA<FromArrival>());
-    expect((decoded.provenance as FromArrival).arrival, arrival);
+    expect(decoded.provenance, isA<FromAdmission>());
+    expect((decoded.provenance as FromAdmission).admitted, admitted);
   });
 }
