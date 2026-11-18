@@ -1,8 +1,7 @@
 /// Renders a trajectory's turns into the one flattened plain-text body a
-/// model request's `request` takes (the render target settled 2026-11-17:
-/// `claude -p` cannot take prior assistant turns as structured input, so the
-/// whole trajectory goes in as one text, the system prompt as a separate
-/// argument this does not produce).
+/// model request's `request` takes: `claude -p` cannot take prior assistant
+/// turns as structured input, so the whole trajectory goes in as one text,
+/// the system prompt as a separate argument this does not produce.
 library;
 
 import 'package:checked_json/checked_json.dart' show JsonObject;
@@ -23,9 +22,8 @@ String _renderLine(Map<String, Object?> node) {
       (throw const FormatException('a turn node must be a JSON object'));
   return switch (json.string('shape')) {
     UserSaid.shapeName => 'User: ${UserSaid.fromJson(json).text}',
-    // wire-ok: is_conversation_shapes 0.8.2 has no ReplyText.fromJson yet
-    // (flagged to airlock-api-04/intersyntactic-a8, 2026-11-18); read the
-    // field directly until it does.
+    // wire-ok: is_conversation_shapes 0.8.2 has no ReplyText.fromJson yet;
+    // read the field directly until it does.
     'ReplyText' => 'Agent: ${json.string('text')}',
     final shape => throw FormatException('cannot render node shape: $shape'),
   };

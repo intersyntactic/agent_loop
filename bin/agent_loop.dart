@@ -1,27 +1,26 @@
 /// The loop's entry point: run as `agent-loop@<loop-user>`, one per
 /// trajectory, with no arguments beyond the two record sockets and which
-/// model sign-in and model to ask for (RULINGS: a loop gets no sign-in and
-/// no network of its own; the airlock makes the model call). It finds its
-/// own assignment in the record rather than being told its trajectory
+/// model sign-in and model to ask for — the loop itself gets no sign-in
+/// and no network of its own; the airlock makes the model call. It finds
+/// its own assignment in the record rather than being told its trajectory
 /// (infra's polkit can start only named template units, so loop_launcher
 /// can pass no per-trajectory argument), follows its trajectory's history
 /// live (the docking station's admissions and its own turn chain, merged),
 /// and, whenever the turn rule says the agent should answer, records a
 /// model request and proposes [AskTheModel] through its crux, naming it.
 ///
-/// The `place` a proposal names is its turn number, counted from 1
-/// (confirmed with airlock-api-04: the airlock service's P for this
-/// trajectory kind is an int, read at airlock lib/src/airlock_subscriber.dart;
-/// one proposal per turn here, so each turn is its own place).
+/// The `place` a proposal names is its turn number, counted from 1: the
+/// airlock service's P for this trajectory kind is an int (airlock
+/// lib/src/airlock_subscriber.dart), and one proposal per turn here means
+/// each turn is its own place.
 ///
 /// Once it has the model's reply, posts it to Teams: the triggering
 /// SaidByUser's rawEventEntry names the relay's own raw activity, read back
-/// to get the serviceUrl a reply needs (teams-module-e2, 2026-11-18 03:18 —
-/// confirmed against a live 201, not guessed, including that the body must
-/// be built key-'type'-before-'text' or the airlock's byte check refuses
-/// it). A call the airlock refuses, or one with no triggering SaidByUser in
-/// reach (shouldn't happen: a turn only starts from one), is logged, not
-/// thrown — the model's answer is already recorded either way.
+/// to get the serviceUrl a reply needs. The body must be built
+/// key-'type'-before-'text' or the airlock's byte check refuses it. A call
+/// the airlock refuses, or one with no triggering SaidByUser in reach
+/// (shouldn't happen: a turn only starts from one), is logged, not thrown
+/// — the model's answer is already recorded either way.
 library;
 
 import 'dart:io';

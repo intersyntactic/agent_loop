@@ -1,6 +1,6 @@
 /// A trajectory's own chain of turns, written to the logbook (the live
-/// record service, is_logbook — RULINGS: each trajectory has its own agent
-/// loop, and the loop writes conversation turns directly).
+/// record service, is_logbook): each trajectory's own agent loop writes
+/// its conversation turns directly.
 library;
 
 import 'dart:async';
@@ -130,9 +130,9 @@ String? _loopUserOf(List<int> body) {
 ///
 /// Built with [Stream.expand] rather than `async*`: an `async*` generator's
 /// own cancel future waits for its next yield, which never comes while a
-/// live subscription is idle (confirmed directly, logbook-client-90, 18
-/// Nov); `expand` passes a cancel straight through to [LogbookReader]'s own
-/// subscription, which is not a generator and cancels at once.
+/// live subscription is idle; `expand` passes a cancel straight through to
+/// [LogbookReader]'s own subscription, which is not a generator and
+/// cancels at once.
 Stream<(ObjectId, TurnEnvelope)> followTrajectory(
   LogbookReader reader, {
   required Kind kind,
