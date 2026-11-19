@@ -20,12 +20,12 @@
 /// action: it records the exact rendered body as pieces, then a request
 /// naming them, before the airlock ever sees it, so the airlock's own
 /// record of what the step sent can point at it by hash rather than
-/// duplicate it. [renderRequestBody] flattens turns read back off the
-/// chain into the one plain-text body `claude -p` takes.
+/// duplicate it. [encodeModelInput] writes a request's turns as the JSON
+/// array of input items every model driver takes.
 library;
 
 export 'src/logbook_writer.dart';
-export 'src/model_request_render.dart';
+export 'src/model_request_input.dart';
 export 'src/reply_chunk_chain.dart';
 export 'src/trajectory_chain.dart';
 export 'src/trajectory_crux.dart';

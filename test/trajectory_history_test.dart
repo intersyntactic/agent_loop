@@ -1,10 +1,10 @@
-// Proves followTrajectoryHistory and renderTrajectoryHistory against a
+// Proves followTrajectoryHistory and trajectoryInput against a
 // real LogbookService: a docking-station-shaped event-admitted-to-mission
 // entry (built with is_docking_station's own encodeDecision, not
 // hand-written JSON) interleaves correctly with the loop's own turns, in
-// logbook order, and renders the same as the old UserSaid-turn path did.
+// logbook order, and becomes one input item per event.
 import 'dart:async';
-import 'dart:convert' show jsonEncode, utf8;
+import 'dart:convert' show jsonDecode, jsonEncode, utf8;
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -157,10 +157,10 @@ void main() {
     expect(found[1], isA<TurnOnChain>());
     expect((found[1] as TurnOnChain).hash, turnHash);
 
-    expect(
-      renderTrajectoryHistory(found),
-      'User: hey are you there\nUser: a loop-written turn',
-    );
+    expect(jsonDecode(encodeModelInput(trajectoryInput(found))), [
+      {'role': 'user', 'content': 'hey are you there'},
+      {'role': 'user', 'content': 'a loop-written turn'},
+    ]);
   });
 
   test('a model call the airlock ran comes back as the agent\'s reply; a '
@@ -243,6 +243,8 @@ void main() {
     expect(found, hasLength(1));
     expect(found.single, isA<SaidByAgent>());
     expect((found.single as SaidByAgent).hash, ranHash);
-    expect(renderTrajectoryHistory(found), 'Agent: yes, here');
+    expect(jsonDecode(encodeModelInput(trajectoryInput(found))), [
+      {'role': 'assistant', 'content': 'yes, here'},
+    ]);
   });
 }

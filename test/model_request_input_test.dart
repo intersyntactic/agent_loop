@@ -1,10 +1,13 @@
-// Proves renderRequestBody flattens turns in order into one plain-text body.
+// Proves a model request's turns encode as the JSON array of Responses API
+// input items the drivers take: real turns, oldest first, no system item.
+import 'dart:convert' show jsonDecode;
+
 import 'package:agent_loop/agent_loop.dart';
 import 'package:test/test.dart';
 
 void main() {
-  test('flattens UserSaid/ReplyText turns into one plain-text body, oldest '
-      'first', () {
+  test('UserSaid and ReplyText turns become user and assistant items, '
+      'oldest first', () {
     final turns = [
       const TurnEnvelope(
         node: {
@@ -22,16 +25,19 @@ void main() {
     ];
 
     expect(
-      renderRequestBody(turns),
-      'User: hey are you there\nAgent: yep, here',
+      jsonDecode(encodeModelInput([for (final t in turns) inputTurnOf(t)])),
+      [
+        {'role': 'user', 'content': 'hey are you there'},
+        {'role': 'assistant', 'content': 'yep, here'},
+      ],
     );
   });
 
-  test('throws for a node shape it does not know how to render', () {
+  test('throws for a node shape it does not know', () {
     expect(
-      () => renderRequestBody([
+      () => inputTurnOf(
         const TurnEnvelope(node: {'shape': 'Mystery'}, provenance: Own()),
-      ]),
+      ),
       throwsFormatException,
     );
   });

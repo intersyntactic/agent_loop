@@ -107,7 +107,7 @@ Future<void> main(List<String> args) async {
     history.add(event);
     if (event is! SaidByUser || !event.startsTurn) continue;
 
-    final request = renderTrajectoryHistory(history);
+    final request = encodeModelInput(trajectoryInput(history));
     final requestHash = await recordModelRequestOnTrajectory(
       chain,
       systemPrompt: _placeholderSystemPrompt,
