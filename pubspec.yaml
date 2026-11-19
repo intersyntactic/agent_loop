@@ -19,12 +19,12 @@ dependencies:
   is_airlock_api:
     git:
       url: https://github.com/intersyntactic/airlock_api.git
-      ref: 0724473ebf59b4e0d2d6b3a81d581226afa87566
+      ref: 6c80450cf0cbe952f30fd1efdd2e6cfbd39ef777
   is_effects: ^0.9.0
   is_teams_module:
     git:
       url: https://github.com/intersyntactic/teams_module.git
-      ref: 059da3605bdf54009ff539134958351660cf8d57
+      ref: 17802e8a5317f49cb02574922d4e37428c4f9219
 
 dev_dependencies:
   lints: ^6.1.0
