@@ -19,6 +19,8 @@ import 'package:is_airlock_api/is_airlock_api.dart'
         outcomeOfProposedActionToJson;
 import 'package:is_effects/is_effects.dart'
     show
+        CutOffReply,
+        FinishedReply,
         ModelName,
         ModelReply,
         ModelSignInName,
@@ -229,8 +231,12 @@ void main() {
       return entry;
     }
 
-    final ranHash = await answer(1, const Ran(ModelReply('yes, here')));
+    final ranHash = await answer(
+      1,
+      const Ran(FinishedReply(text: 'yes, here')),
+    );
     await answer(2, const Refused('no sign-in'));
+    final cutHash = await answer(3, const Ran(CutOffReply(text: 'half an')));
 
     final items = <TrajectoryFeedItem>[];
     final sub = followTrajectoryHistory(
@@ -251,15 +257,31 @@ void main() {
           switch (e) {
             ActionProposed(:final place, :final asksTheModel) =>
               'proposed $place model=$asksTheModel',
-            SaidByAgent(:final hash) => 'reply ${hash == ranHash}',
+            SaidByAgent(:final hash) =>
+              'reply ${hash == ranHash
+                  ? 'ran'
+                  : hash == cutHash
+                  ? 'cut'
+                  : '?'}',
             SaidByUser() || TurnOnChain() => '${e.runtimeType}',
           },
       ],
-      ['proposed 1 model=true', 'reply true', 'proposed 2 model=true'],
+      [
+        'proposed 1 model=true',
+        'reply ran',
+        'proposed 2 model=true',
+        'proposed 3 model=true',
+        'reply cut',
+      ],
     );
-    expect(lastPlace(found), 2);
+    expect(lastPlace(found), 3);
+    // A cut-off reply reaches the model marked as cut off, never as finished.
     expect(jsonDecode(encodeModelInput(trajectoryInput(found))), [
       {'role': 'assistant', 'content': 'yes, here'},
+      {
+        'role': 'assistant',
+        'content': 'half an\n\n(This reply was cut off before it finished.)',
+      },
     ]);
   });
 }
