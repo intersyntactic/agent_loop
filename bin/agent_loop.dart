@@ -1,7 +1,8 @@
 /// The loop's entry point: run as `agent-loop@<loop-user>`, one per
-/// trajectory, with no arguments beyond the two record sockets and which
-/// model sign-in and model to ask for — the loop itself gets no sign-in
-/// and no network of its own; the airlock makes the model call. It finds
+/// trajectory, with no arguments beyond the two record sockets — the loop
+/// itself gets no sign-in and no network of its own; the airlock makes the
+/// model call, under the model and sign-in the trajectory started under
+/// (its starting admission's rules, [startingModel]). It finds
 /// its own assignment in the record rather than being told its trajectory
 /// (infra's polkit can start only named template units, so loop_launcher
 /// can pass no per-trajectory argument), follows its trajectory's history
@@ -27,8 +28,7 @@ import 'dart:io';
 
 import 'package:agent_loop/agent_loop.dart';
 import 'package:is_docking_station/is_docking_station.dart' show RelayedEvent;
-import 'package:is_effects/is_effects.dart'
-    show ModelName, ModelReply, ModelSignInName, SignIn;
+import 'package:is_effects/is_effects.dart' show ModelReply, SignIn;
 import 'package:is_airlock_api/is_airlock_api.dart'
     show
         Action,
@@ -69,8 +69,7 @@ Future<void> main(List<String> args) async {
   final options = _Options.parse(args);
   if (options == null) {
     stderr.writeln(
-      'usage: agent_loop --record-read <socket> --record-write <socket> '
-      '--model-sign-in <name> --model <name>',
+      'usage: agent_loop --record-read <socket> --record-write <socket>',
     );
     exitCode = 64; // EX_USAGE
     return;
@@ -106,6 +105,15 @@ Future<void> main(List<String> args) async {
   var nextTurn = 0;
 
   Future<void> answer(SaidByUser event) async {
+    final starting = startingModel(history);
+    final model = starting.model;
+    if (model == null) {
+      stderr.writeln(
+        'agent_loop: ERROR not answering ${event.hash.hex}: no model to '
+        'call, since ${starting.why}',
+      );
+      return;
+    }
     final request = encodeModelInput(trajectoryInput(history));
     final requestHash = await recordModelRequestOnTrajectory(
       chain,
@@ -121,8 +129,8 @@ Future<void> main(List<String> args) async {
     final crux = Crux.through(link, turn: turn);
     final asked = Program.askTheModel.runOrRefusal<ModelReply>(
       ModelCall(
-        signIn: options.modelSignIn,
-        model: options.model,
+        signIn: model.signIn,
+        model: model.model,
         request: EntryId.parse(requestHash.hex)!,
       ),
       then: (ModelReply reply) => Done(reply),
@@ -247,47 +255,26 @@ Future<void> main(List<String> args) async {
 }
 
 final class _Options {
-  const _Options({
-    required this.recordRead,
-    required this.recordWrite,
-    required this.modelSignIn,
-    required this.model,
-  });
+  const _Options({required this.recordRead, required this.recordWrite});
 
   final String recordRead;
   final String recordWrite;
-  final ModelSignInName modelSignIn;
-  final ModelName model;
 
   static _Options? parse(List<String> args) {
     String? recordRead;
     String? recordWrite;
-    ModelSignInName? modelSignIn;
-    ModelName? model;
     for (var i = 0; i < args.length; i++) {
       switch (args[i]) {
         case '--record-read' when i + 1 < args.length:
           recordRead = args[++i];
         case '--record-write' when i + 1 < args.length:
           recordWrite = args[++i];
-        case '--model-sign-in' when i + 1 < args.length:
-          modelSignIn = ModelSignInName.parse(args[++i]);
-        case '--model' when i + 1 < args.length:
-          model = ModelName.parse(args[++i]);
         default:
           return null;
       }
     }
-    return recordRead != null &&
-            recordWrite != null &&
-            modelSignIn != null &&
-            model != null
-        ? _Options(
-            recordRead: recordRead,
-            recordWrite: recordWrite,
-            modelSignIn: modelSignIn,
-            model: model,
-          )
+    return recordRead != null && recordWrite != null
+        ? _Options(recordRead: recordRead, recordWrite: recordWrite)
         : null;
   }
 }

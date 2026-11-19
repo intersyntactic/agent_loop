@@ -27,6 +27,8 @@ import 'package:is_docking_station/is_docking_station.dart'
         EventAdmittedToMission,
         MessageSaid,
         decodeDecision;
+import 'package:checked_json/checked_json.dart' show JsonObject;
+import 'package:is_flight_rules/is_flight_rules.dart' show FlightRules;
 import 'package:is_logbook/service.dart' show Kind;
 import 'package:is_logbook_client/is_logbook_client.dart'
     show CaughtUp, Entry, LogbookReader, ObjectId;
@@ -34,6 +36,7 @@ import 'package:is_effects/is_effects.dart'
     show
         CutOffReply,
         FinishedReply,
+        ModelAndSignIn,
         ModelReply,
         Ran,
         Refused,
@@ -132,6 +135,23 @@ final class ActionProposed extends TrajectoryEvent {
   final bool asksTheModel;
 }
 
+/// The admission that started this trajectory, and the [rules] it started
+/// under: [FlightRules.startingModel] is the model and sign-in its loop's
+/// calls go out as.
+final class TrajectoryStarted extends TrajectoryEvent {
+  const TrajectoryStarted({required super.hash, required this.rules});
+
+  final FlightRules rules;
+}
+
+/// The admission that started this trajectory carried rules that do not
+/// read as [FlightRules], because [why]: the loop has no model to call.
+final class TrajectoryRulesUnreadable extends TrajectoryEvent {
+  const TrajectoryRulesUnreadable({required super.hash, required this.why});
+
+  final String why;
+}
+
 /// An entry the loop itself wrote on its own turn chain.
 final class TurnOnChain extends TrajectoryEvent {
   const TurnOnChain({required super.hash, required this.turn});
@@ -224,12 +244,14 @@ Stream<TrajectoryFeedItem> followTrajectoryHistory(
       return const [];
     }
     final decision = decodeDecision(entry.kind, entry.body);
-    if (decision case EventAdmittedToMission(
-      :final event,
-      reading: MessageSaid(:final node, :final addressInExternalSystem),
-      :final startsTurn,
-    )) {
-      return [
+    if (decision is! EventAdmittedToMission) return const [];
+    return [
+      if (decision.rules case final rules?) _startedUnder(entry.id, rules),
+      if (decision case EventAdmittedToMission(
+        :final event,
+        reading: MessageSaid(:final node, :final addressInExternalSystem),
+        :final startsTurn,
+      ))
         SaidByUser(
           hash: entry.id,
           author: node.author,
@@ -238,10 +260,18 @@ Stream<TrajectoryFeedItem> followTrajectoryHistory(
           address: addressInExternalSystem,
           rawEvent: rawEvents.remove(event),
         ),
-      ];
-    }
-    return const [];
+    ];
   });
+}
+
+/// The admission [hash] started this trajectory under [rules]: read once,
+/// strictly, as [FlightRules].
+TrajectoryEvent _startedUnder(ObjectId hash, JsonObject rules) {
+  try {
+    return TrajectoryStarted(hash: hash, rules: FlightRules.fromJson(rules));
+  } on FormatException catch (e) {
+    return TrajectoryRulesUnreadable(hash: hash, why: e.message);
+  }
 }
 
 /// The model's reply in [body], an outcome entry's, when it answers one of
@@ -282,13 +312,34 @@ List<ModelInputTurn> trajectoryInput(List<TrajectoryEvent> history) => [
         },
       ),
       TurnOnChain(:final turn) => inputTurnOf(turn),
-      ActionProposed() => null,
+      ActionProposed() ||
+      TrajectoryStarted() ||
+      TrajectoryRulesUnreadable() => null,
     },
 ];
 
 /// Follows a cut-off reply's text in the model's own history, so it knows
 /// that reply stopped short rather than reading it as finished.
 const _cutOffNote = '(This reply was cut off before it finished.)';
+
+/// The model and sign-in [history]'s trajectory started under: from the
+/// admission that started it, or why there is none. A loop asks the model
+/// nothing without one.
+({ModelAndSignIn? model, String? why}) startingModel(
+  List<TrajectoryEvent> history,
+) {
+  for (final event in history) {
+    switch (event) {
+      case TrajectoryStarted(:final rules):
+        return (model: rules.startingModel, why: null);
+      case TrajectoryRulesUnreadable(:final why):
+        return (model: null, why: 'its rules do not read: $why');
+      case SaidByUser() || SaidByAgent() || ActionProposed() || TurnOnChain():
+        continue;
+    }
+  }
+  return (model: null, why: 'no admission started it under rules');
+}
 
 /// The message a loop started on [history] still owes an answer: the
 /// latest one that starts a turn, unless this loop has proposed a model
@@ -302,7 +353,12 @@ SaidByUser? unansweredTurn(List<TrajectoryEvent> history) {
         return null;
       case SaidByUser(startsTurn: true):
         return event;
-      case SaidByUser() || SaidByAgent() || ActionProposed() || TurnOnChain():
+      case SaidByUser() ||
+          SaidByAgent() ||
+          ActionProposed() ||
+          TurnOnChain() ||
+          TrajectoryStarted() ||
+          TrajectoryRulesUnreadable():
         continue;
     }
   }

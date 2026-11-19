@@ -201,6 +201,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "0.11.0"
+  is_flight_rules:
+    dependency: "direct main"
+    description:
+      name: is_flight_rules
+      sha256: "5a0a7b582ca8d2b0b9aeee381892c9e1000d3f94163b0cab20507b56bbd79afc"
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.2.0"
   is_logbook:
     dependency: "direct main"
     description:

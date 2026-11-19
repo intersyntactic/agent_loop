@@ -22,6 +22,7 @@ import 'package:is_effects/is_effects.dart'
     show
         CutOffReply,
         FinishedReply,
+        ModelAndSignIn,
         ModelName,
         ModelReply,
         ModelSignInName,
@@ -32,7 +33,10 @@ import 'package:is_effects/is_effects.dart'
         encodeOutcome;
 import 'package:is_conversation_shapes/is_conversation_shapes.dart'
     show SourceMessageId, UserSaid;
+import 'package:checked_json/checked_json.dart' show JsonObject;
 import 'package:is_docking_station/is_docking_station.dart';
+import 'package:is_flight_rules/is_flight_rules.dart'
+    show FlightRules, ProgramsNetwork, WhatMayLeaveThisMachine;
 import 'package:is_logbook/is_logbook.dart';
 import 'package:is_logbook/service.dart';
 import 'package:is_logbook_client/is_logbook_client.dart' show LogbookReader;
@@ -168,6 +172,122 @@ void main() {
     ]);
   });
 
+  group('the model a trajectory started under', () {
+    final claude = ModelAndSignIn(
+      signIn: ModelSignInName.parse('nick-claude-team')!,
+      model: ModelName.parse('claude-opus-5-5')!,
+    );
+    WhatMayLeaveThisMachine allowing(String signIn) => WhatMayLeaveThisMachine(
+      modelSignInsCallsMayGoOutAs: [ModelSignInName.parse(signIn)!],
+      sitesTheWebDriverMayReach: const [],
+      programsNetwork: ProgramsNetwork.values.first,
+    );
+
+    // Writes an admission of [text], starting a new trajectory and mission
+    // under [rules] when they are given, and returns everything the feed
+    // then hands on.
+    Future<List<TrajectoryEvent>> admit(
+      List<(String text, JsonObject? rules)> messages,
+    ) async {
+      final rootResult = await rawWriter.write(
+        Kind.usersAssignedToTrajectory,
+        Uint8List.fromList(
+          '{"trajectory":"$trajectoryUnderTest",'
+                  '"mission":"${client.ObjectId.of(Uint8List.fromList('m'.codeUnits)).hex}",'
+                  '"loopUser":"$uid","suit":"1002"}'
+              .codeUnits,
+        ),
+      );
+      final root = (rootResult as client.Written).entry;
+      for (final (i, (text, rules)) in messages.indexed) {
+        final raw = await rawWriter.write(
+          Kind.parse('event')!,
+          Uint8List.fromList(utf8.encode('{"n":$i}')),
+        );
+        final (kind, body) = encodeDecision(
+          EventAdmittedToMission(
+            (raw as client.Written).entry,
+            by: DecidedBy.rules,
+            reading: MessageSaid(
+              addressInExternalSystem: AddressInExternalSystem.parse(
+                'teams:c1',
+              )!,
+              containingAddress: null,
+              key: EventKey.parse('k$i')!,
+              node: UserSaid(
+                author: ActorId.parse('teams:u1')!,
+                source: SourceMessageId.parse('m$i')!,
+                text: text,
+              ),
+            ),
+            placement: rules == null
+                ? OnTrajectory(TrajectoryId.parse('a1' * 32)!)
+                : const StartsTrajectory(StartsMission()),
+            rules: rules,
+            startsTurn: true,
+          ),
+        );
+        await rawWriter.write(kind, body);
+      }
+      final items = <TrajectoryFeedItem>[];
+      final sub = followTrajectoryHistory(
+        reader,
+        turnKind: turnKind,
+        chainRoot: root,
+      ).listen(items.add);
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+      await sub.cancel();
+      return items.whereType<TrajectoryEvent>().toList();
+    }
+
+    test('comes from the rules on the admission that started it; a '
+        'follow-up carries none', () async {
+      final rules = FlightRules.of(
+        whatMayLeaveThisMachine: allowing('nick-claude-team'),
+        startingModel: claude,
+      )!.toJson();
+      final found = await admit([('first', rules), ('follow-up', null)]);
+
+      expect(
+        [for (final e in found) e.runtimeType],
+        [TrajectoryStarted, SaidByUser, SaidByUser],
+      );
+      expect(startingModel(found).model, claude);
+      // The rules are not part of the conversation.
+      expect(jsonDecode(encodeModelInput(trajectoryInput(found))), [
+        {'role': 'user', 'content': 'first'},
+        {'role': 'user', 'content': 'follow-up'},
+      ]);
+    });
+
+    test('rules whose starting sign-in they do not allow give no model, '
+        'and say why', () async {
+      final notAllowed = JsonObject.of({
+        'whatMayLeaveThisMachine': allowing('cam-chatgpt').toJson(),
+        'startingModel': {
+          'signIn': 'nick-claude-team',
+          'model': 'claude-opus-5-5',
+        },
+      });
+      final found = await admit([('first', notAllowed)]);
+
+      expect(found.first, isA<TrajectoryRulesUnreadable>());
+      final starting = startingModel(found);
+      expect(starting.model, isNull);
+      expect(starting.why, contains('startingModel.signIn'));
+    });
+
+    test(
+      'a trajectory whose start the loop never saw gives no model',
+      () async {
+        final found = await admit([('follow-up', null)]);
+
+        expect(startingModel(found).model, isNull);
+        expect(startingModel(found).why, contains('no admission'));
+      },
+    );
+  });
+
   test('a model call the airlock ran comes back as the agent\'s reply; a '
       'refused one is skipped', () async {
     final rootResult = await rawWriter.write(
@@ -261,7 +381,10 @@ void main() {
                   : hash == cutHash
                   ? 'cut'
                   : '?'}',
-            SaidByUser() || TurnOnChain() => '${e.runtimeType}',
+            SaidByUser() ||
+            TurnOnChain() ||
+            TrajectoryStarted() ||
+            TrajectoryRulesUnreadable() => '${e.runtimeType}',
           },
       ],
       [
