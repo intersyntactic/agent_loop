@@ -64,12 +64,22 @@ const _placeholderSystemPrompt =
 
 const _turnKind = 'turn';
 
+const _summarizerSystemPrompt =
+    'You are summarizing a conversation between a user and an agent so the '
+    'agent can carry on from your summary alone. Keep every fact, decision, '
+    'name, commitment and open question the agent will need; drop '
+    'pleasantries. Reply with the summary only, in plain text.';
+
+/// Rendered request size, in characters, past which the loop summarizes
+/// its history before asking the model.
+const _defaultCompactAt = 400000;
+
 Future<void> main(List<String> args) async {
   final options = _Options.parse(args);
   if (options == null) {
     stderr.writeln(
       'usage: agent_loop --record-read <socket> --record-write <socket> '
-      '--model-sign-in <name> --model <name>',
+      '--model-sign-in <name> --model <name> [--compact-at <characters>]',
     );
     exitCode = 64; // EX_USAGE
     return;
@@ -98,21 +108,42 @@ Future<void> main(List<String> args) async {
   final link = TrajectoryCrux(chain: chain, returned: followResults(reader));
 
   final history = <TrajectoryEvent>[];
+  // A summary's reply and boundary are added here as soon as they are
+  // written, then arrive again from the feed; the second copy is dropped.
+  final seen = <ObjectId>{};
   var turn = 0;
   await for (final event in followTrajectoryHistory(
     reader,
     turnKind: turnKind,
     chainRoot: root,
   )) {
+    if (!seen.add(event.hash)) continue;
     history.add(event);
     if (event is! SaidByUser || !event.startsTurn) continue;
 
-    final request = renderTrajectoryHistory(history);
+    var window = requestWindow(history);
+    if (renderTrajectoryHistory(window).length > options.compactAt &&
+        window.length > 1) {
+      final summarized = await _summarize(
+        chain,
+        link,
+        window.sublist(0, window.length - 1),
+        place: ++turn,
+        options: options,
+      );
+      for (final added in summarized) {
+        seen.add(added.hash);
+        history.add(added);
+      }
+      window = requestWindow(history);
+    }
+
+    final request = renderTrajectoryHistory(window);
     final requestHash = await recordModelRequestOnTrajectory(
       chain,
       systemPrompt: _placeholderSystemPrompt,
       request: request,
-      builtFrom: [for (final e in history) e.hash],
+      builtFrom: [for (final e in window) e.hash],
     );
     stdout.writeln('agent_loop: recorded model-request ${requestHash.hex}');
 
@@ -207,12 +238,72 @@ Future<void> main(List<String> args) async {
   }
 }
 
+/// Asks the model, through [link] at [place], to summarize [earlier], then
+/// writes the [HistorySummarized] boundary naming that reply's outcome
+/// entry. Returns the summary's reply and its boundary, to add to the
+/// history at once rather than wait for the feed to bring them back; none
+/// if the call was refused or its outcome entry was not matched, in which
+/// case the turn goes ahead with its whole history.
+Future<List<TrajectoryEvent>> _summarize(
+  TrajectoryChain chain,
+  TrajectoryCrux link,
+  List<TrajectoryEvent> earlier, {
+  required int place,
+  required _Options options,
+}) async {
+  final requestHash = await recordModelRequestOnTrajectory(
+    chain,
+    systemPrompt: _summarizerSystemPrompt,
+    request: renderTrajectoryHistory(earlier),
+    builtFrom: [for (final e in earlier) e.hash],
+  );
+  final asked = Program.askTheModel.runOrRefusal<ModelReply>(
+    ModelCall(
+      signIn: options.modelSignIn,
+      model: options.model,
+      request: EntryId.parse(requestHash.hex)!,
+    ),
+    then: (ModelReply reply) => Done(reply),
+  );
+  switch (await asked.next(Crux.through(link, place: place))) {
+    case Done(:final value):
+      final resultEntry = link.resultEntryAt(place);
+      if (resultEntry == null) {
+        stderr.writeln(
+          'agent_loop: no result entry for the summary, not '
+          'compacting',
+        );
+        return const [];
+      }
+      final summary = ObjectId.parse(resultEntry.hex)!;
+      final marker = HistorySummarized(
+        summary: summary,
+        upTo: earlier.last.hash,
+      );
+      final markerHash = await chain.append(marker.toJson(), const Own());
+      stdout.writeln(
+        'agent_loop: summarized history up to '
+        '${marker.upTo.hex} in ${summary.hex}',
+      );
+      return [
+        SaidByAgent(hash: summary, text: value.text),
+        HistorySummarizedOnChain(hash: markerHash, marker: marker),
+      ];
+    case Failed(:final why):
+      stderr.writeln('agent_loop: summary call refused, not compacting: $why');
+      return const [];
+    case Action():
+      throw StateError('runOrRefusal returned an unresolved Action');
+  }
+}
+
 final class _Options {
   const _Options({
     required this.recordRead,
     required this.recordWrite,
     required this.modelSignIn,
     required this.model,
+    required this.compactAt,
   });
 
   final String recordRead;
@@ -220,13 +311,21 @@ final class _Options {
   final ModelSignInName modelSignIn;
   final ModelName model;
 
+  /// Rendered request size, in characters, past which the loop summarizes.
+  final int compactAt;
+
   static _Options? parse(List<String> args) {
     String? recordRead;
     String? recordWrite;
     ModelSignInName? modelSignIn;
     ModelName? model;
+    var compactAt = _defaultCompactAt;
     for (var i = 0; i < args.length; i++) {
       switch (args[i]) {
+        case '--compact-at' when i + 1 < args.length:
+          final parsed = int.tryParse(args[++i]);
+          if (parsed == null || parsed <= 0) return null;
+          compactAt = parsed;
         case '--record-read' when i + 1 < args.length:
           recordRead = args[++i];
         case '--record-write' when i + 1 < args.length:
@@ -248,6 +347,7 @@ final class _Options {
             recordWrite: recordWrite,
             modelSignIn: modelSignIn,
             model: model,
+            compactAt: compactAt,
           )
         : null;
   }
