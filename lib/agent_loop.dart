@@ -24,6 +24,7 @@
 /// array of input items every model driver takes.
 library;
 
+export 'src/history_compaction.dart';
 export 'src/logbook_writer.dart';
 export 'src/model_request_input.dart';
 export 'src/reply_chunk_chain.dart';

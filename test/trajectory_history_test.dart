@@ -237,6 +237,15 @@ void main() {
     );
     await answer(2, const Refused('no sign-in'));
     final cutHash = await answer(3, const Ran(CutOffReply(text: 'half an')));
+    // A summary call, marked on the chain before it is proposed.
+    await chain.append(
+      HistorySummaryAsked(place: 4, upTo: cutHash).toJson(),
+      const Own(),
+    );
+    final summaryHash = await answer(
+      4,
+      const Ran(FinishedReply(text: 'the gist')),
+    );
 
     final items = <TrajectoryFeedItem>[];
     final sub = followTrajectoryHistory(
@@ -249,38 +258,63 @@ void main() {
     await returned.close();
     final found = items.whereType<TrajectoryEvent>().toList();
 
-    // Both proposals come back, each with its place; only the call that ran
-    // comes back as a reply.
+    // Every proposal comes back, each with its place and what it was for;
+    // only the calls that ran come back as replies, and the call the marker
+    // names comes back as a summary, never as something the agent said.
     expect(
       [
         for (final e in found)
           switch (e) {
-            ActionProposed(:final place, :final asksTheModel) =>
-              'proposed $place model=$asksTheModel',
+            ActionProposed(:final place, :final purpose) =>
+              'proposed $place ${purpose.name}',
             SaidByAgent(:final hash) =>
               'reply ${hash == ranHash
                   ? 'ran'
                   : hash == cutHash
                   ? 'cut'
                   : '?'}',
+            SummaryAsked(:final asked) =>
+              'asked ${asked.place} up to '
+                  '${asked.upTo == cutHash ? 'cut' : '?'}',
+            SummaryByAgent(:final hash, :final upTo) =>
+              'summary ${hash == summaryHash ? 'ran' : '?'} up to '
+                  '${upTo == cutHash ? 'cut' : '?'}',
             SaidByUser() || TurnOnChain() => '${e.runtimeType}',
           },
       ],
       [
-        'proposed 1 model=true',
+        'proposed 1 answer',
         'reply ran',
-        'proposed 2 model=true',
-        'proposed 3 model=true',
+        'proposed 2 answer',
+        'proposed 3 answer',
         'reply cut',
+        'asked 4 up to cut',
+        'proposed 4 summary',
+        'summary ran up to cut',
       ],
     );
-    expect(lastPlace(found), 3);
-    // A cut-off reply reaches the model marked as cut off, never as finished.
-    expect(jsonDecode(encodeModelInput(trajectoryInput(found))), [
-      {'role': 'assistant', 'content': 'yes, here'},
+    expect(lastPlace(found), 4);
+    // Before the summary: a cut-off reply reaches the model marked as cut
+    // off, never as finished, and no summary call shows.
+    final beforeSummary = found.takeWhile((e) => e is! SummaryAsked).toList();
+    expect(
+      jsonDecode(
+        encodeModelInput(trajectoryInput(requestWindow(beforeSummary))),
+      ),
+      [
+        {'role': 'assistant', 'content': 'yes, here'},
+        {
+          'role': 'assistant',
+          'content': 'half an\n\n(This reply was cut off before it finished.)',
+        },
+      ],
+    );
+    // After it: the summary alone stands in for everything it covers.
+    expect(jsonDecode(encodeModelInput(trajectoryInput(requestWindow(found)))), [
       {
-        'role': 'assistant',
-        'content': 'half an\n\n(This reply was cut off before it finished.)',
+        'role': 'user',
+        'content':
+            'Your summary of this conversation before this point:\n\nthe gist',
       },
     ]);
   });

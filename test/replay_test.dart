@@ -22,8 +22,11 @@ SaidByUser _user(String seed, {bool startsTurn = true}) => SaidByUser(
   rawEvent: null,
 );
 
-ActionProposed _proposed(String seed, int place, {bool model = true}) =>
-    ActionProposed(hash: _id(seed), place: place, asksTheModel: model);
+ActionProposed _proposed(
+  String seed,
+  int place, {
+  ProposalPurpose purpose = ProposalPurpose.answer,
+}) => ActionProposed(hash: _id(seed), place: place, purpose: purpose);
 
 SaidByAgent _agent(String seed) => SaidByAgent(
   hash: _id(seed),
@@ -36,7 +39,7 @@ void main() {
       _user('u1'),
       _proposed('p1', 1),
       _agent('a1'),
-      _proposed('p2', 2, model: false), // the Teams post
+      _proposed('p2', 2, purpose: ProposalPurpose.other), // the Teams post
     ];
 
     expect(unansweredTurn(history), isNull);
@@ -75,7 +78,20 @@ void main() {
 
   test('a web post after the message is not an answer to it', () {
     expect(
-      unansweredTurn([_user('u1'), _proposed('p1', 1, model: false)])?.hash,
+      unansweredTurn([
+        _user('u1'),
+        _proposed('p1', 1, purpose: ProposalPurpose.other),
+      ])?.hash,
+      _id('u1'),
+    );
+  });
+
+  test('a summary call after the message is not an answer to it', () {
+    expect(
+      unansweredTurn([
+        _user('u1'),
+        _proposed('p1', 1, purpose: ProposalPurpose.summary),
+      ])?.hash,
       _id('u1'),
     );
   });
@@ -88,7 +104,11 @@ void main() {
     );
     expect(
       lastPlace([
-        ActionProposed(hash: _id('x'), place: null, asksTheModel: true),
+        ActionProposed(
+          hash: _id('x'),
+          place: null,
+          purpose: ProposalPurpose.answer,
+        ),
       ]),
       0,
     );

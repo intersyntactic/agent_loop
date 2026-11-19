@@ -40,6 +40,7 @@ import 'package:is_effects/is_effects.dart'
         decodeOutcome;
 import 'package:is_shapes/is_shapes.dart' show ActorId, EntryId;
 
+import 'history_compaction.dart' show HistorySummaryAsked, requestWindow;
 import 'model_request_input.dart'
     show ModelInputRole, ModelInputTurn, inputTurnOf;
 import 'turn_envelope.dart';
@@ -116,19 +117,45 @@ final class SaidByAgent extends TrajectoryEvent {
   String get text => reply.text;
 }
 
+/// The summary the model gave for a call the loop marked with
+/// [SummaryAsked]: [hash] is the airlock's outcome entry for it, and [upTo]
+/// the last event it covers. Never part of the conversation itself; what a
+/// request shows of it is [requestWindow]'s to decide.
+final class SummaryByAgent extends TrajectoryEvent {
+  const SummaryByAgent({
+    required super.hash,
+    required this.reply,
+    required this.upTo,
+  });
+
+  final ModelReply reply;
+  final ObjectId upTo;
+}
+
+/// What a proposal this loop wrote was for: a model call answering the
+/// conversation, a model call summarizing it, or any other action.
+enum ProposalPurpose { answer, summary, other }
+
 /// An action this loop proposed: [place] is the place it named, null when
-/// that was not a whole number; [asksTheModel] is whether its program was
-/// AskTheModel. A replayed history needs both: whether a message was
-/// already answered, and where the next proposal's place starts.
+/// that was not a whole number; [purpose] is what it was for. A replayed
+/// history needs both: whether a message was already answered, and where
+/// the next proposal's place starts.
 final class ActionProposed extends TrajectoryEvent {
   const ActionProposed({
     required super.hash,
     required this.place,
-    required this.asksTheModel,
+    required this.purpose,
   });
 
   final int? place;
-  final bool asksTheModel;
+  final ProposalPurpose purpose;
+}
+
+/// A [HistorySummaryAsked] turn, read back off the loop's own chain.
+final class SummaryAsked extends TrajectoryEvent {
+  const SummaryAsked({required super.hash, required this.asked});
+
+  final HistorySummaryAsked asked;
 }
 
 /// An entry the loop itself wrote on its own turn chain.
@@ -158,9 +185,10 @@ final _outcomeKind = Kind.parse(outcomeOfProposedActionKind)!;
 ///
 /// The loop's own proposals arrive too, each as an [ActionProposed], and
 /// the airlock's outcome of each: an outcome answering a proposal that
-/// asked the model, if the model ran, becomes a [SaidByAgent]. Every other
-/// outcome (a refused call, a web request) is skipped. A proposal the
-/// airlock could not read as one is skipped too.
+/// asked the model, if the model ran, becomes a [SaidByAgent], or a
+/// [SummaryByAgent] when a [HistorySummaryAsked] turn marked its place
+/// first. Every other outcome (a refused call, a web request) is skipped.
+/// A proposal the airlock could not read as one is skipped too.
 ///
 /// Built with [Stream.expand] rather than `async*`, for the same reason as
 /// [followTrajectory]: `expand` passes a cancel straight through to
@@ -172,7 +200,10 @@ Stream<TrajectoryFeedItem> followTrajectoryHistory(
 }) {
   final onChain = <ObjectId>{chainRoot};
   final rawEvents = <ObjectId, Entry>{};
-  final modelCalls = <EntryId>{};
+  // Each model call proposed, to the last event it summarizes; null for an
+  // answer.
+  final modelCalls = <EntryId, ObjectId?>{};
+  final summariesAsked = <int, ObjectId>{};
   final kinds = {
     turnKind,
     DecisionEntryKind.eventAdmittedToMission,
@@ -189,33 +220,54 @@ Stream<TrajectoryFeedItem> followTrajectoryHistory(
         entry = item;
     }
     if (entry.kind == _proposedKind) {
+      // A proposal is written on the loop's own chain, so a turn written
+      // after it follows it.
+      onChain.add(entry.id);
       if (ActionProposedByAgentLoop.read(_text(entry.body))
           case ActionProposedByAgentLoop(:final place, :final program)) {
-        final asksTheModel = program is AskTheModel;
-        if (asksTheModel) modelCalls.add(EntryId.parse(entry.id.hex)!);
+        final upTo = place is int ? summariesAsked.remove(place) : null;
+        final purpose = switch ((program, upTo)) {
+          (AskTheModel(), null) => ProposalPurpose.answer,
+          (AskTheModel(), _?) => ProposalPurpose.summary,
+          _ => ProposalPurpose.other,
+        };
+        if (program is AskTheModel) {
+          modelCalls[EntryId.parse(entry.id.hex)!] = upTo;
+        }
         return [
           ActionProposed(
             hash: entry.id,
             place: place is int ? place : null,
-            asksTheModel: asksTheModel,
+            purpose: purpose,
           ),
         ];
       }
       return const [];
     }
     if (entry.kind == _outcomeKind) {
-      final reply = _modelReplyIn(entry.body, modelCalls);
-      return reply == null
-          ? const []
-          : [SaidByAgent(hash: entry.id, reply: reply)];
+      final answered = _modelReplyIn(entry.body, modelCalls);
+      return switch (answered) {
+        null => const [],
+        (:final reply, upTo: null) => [
+          SaidByAgent(hash: entry.id, reply: reply),
+        ],
+        (:final reply, :final upTo?) => [
+          SummaryByAgent(hash: entry.id, reply: reply, upTo: upTo),
+        ],
+      };
     }
     if (entry.kind == turnKind) {
       final belongs =
           entry.previous != null && onChain.contains(entry.previous);
       if (!belongs) return const [];
       onChain.add(entry.id);
+      final turn = TurnEnvelope.decode(entry.body);
+      final asked = HistorySummaryAsked.fromJson(turn.node);
+      if (asked != null) summariesAsked[asked.place] = asked.upTo;
       return [
-        TurnOnChain(hash: entry.id, turn: TurnEnvelope.decode(entry.body)),
+        asked == null
+            ? TurnOnChain(hash: entry.id, turn: turn)
+            : SummaryAsked(hash: entry.id, asked: asked),
       ];
     }
     if (entry.kind == _eventKind) {
@@ -244,13 +296,19 @@ Stream<TrajectoryFeedItem> followTrajectoryHistory(
 }
 
 /// The model's reply in [body], an outcome entry's, when it answers one of
-/// [modelCalls] and the model ran; null otherwise.
-ModelReply? _modelReplyIn(List<int> body, Set<EntryId> modelCalls) {
+/// [modelCalls] and the model ran, with the last event that call
+/// summarizes (null for an answer); null otherwise.
+({ModelReply reply, ObjectId? upTo})? _modelReplyIn(
+  List<int> body,
+  Map<EntryId, ObjectId?> modelCalls,
+) {
   final outcome = readOutcomeOfProposedAction(_text(body));
-  if (outcome == null || !modelCalls.contains(outcome.proposed)) return null;
+  if (outcome == null || !modelCalls.containsKey(outcome.proposed)) {
+    return null;
+  }
   try {
     return switch (decodeOutcome(outcome.result, decodeModelReply)) {
-      Ran(:final output) => output,
+      Ran(:final output) => (reply: output, upTo: modelCalls[outcome.proposed]),
       Refused() => null,
     };
   } on FormatException {
@@ -262,7 +320,9 @@ ModelReply? _modelReplyIn(List<int> body, Set<EntryId> modelCalls) {
 /// not UTF-8 reads as text they then refuse, rather than throwing here.
 String _text(List<int> body) => utf8.decode(body, allowMalformed: true);
 
-/// [history], oldest first, as a model request's turns: one per event.
+/// [history], oldest first, as a model request's turns: one per event. A
+/// [SummaryByAgent] is the user's item that stands in for what it covers,
+/// so pass a [requestWindow], never a whole history.
 /// [TurnOnChain] goes through [inputTurnOf]'s own node-shape cases; since
 /// ReplyText turns are dead and no `UserSaid` ever arrives this way any
 /// more (it arrives as [SaidByUser] instead), nothing currently reaches
@@ -280,8 +340,12 @@ List<ModelInputTurn> trajectoryInput(List<TrajectoryEvent> history) => [
           CutOffReply(:final text) => '$text\n\n$_cutOffNote',
         },
       ),
+      SummaryByAgent(:final reply) => ModelInputTurn(
+        ModelInputRole.user,
+        '$_summaryLead${reply.text}',
+      ),
       TurnOnChain(:final turn) => inputTurnOf(turn),
-      ActionProposed() => null,
+      ActionProposed() || SummaryAsked() => null,
     },
 ];
 
@@ -289,19 +353,29 @@ List<ModelInputTurn> trajectoryInput(List<TrajectoryEvent> history) => [
 /// that reply stopped short rather than reading it as finished.
 const _cutOffNote = '(This reply was cut off before it finished.)';
 
+/// Leads a summary's text, so the model reads it as its own earlier notes
+/// rather than something the user just said.
+const _summaryLead = 'Your summary of this conversation before this point:\n\n';
+
 /// The message a loop started on [history] still owes an answer: the
 /// latest one that starts a turn, unless this loop has proposed a model
-/// call after it. Null when every such message was answered, or there is
-/// none. Only the latest counts: one answer, built from the whole history,
-/// covers any earlier ones that arrived while the loop was down.
+/// call answering it after it; a summary call answers nothing. Null when
+/// every such message was answered, or there is none. Only the latest
+/// counts: one answer, built from the whole history, covers any earlier
+/// ones that arrived while the loop was down.
 SaidByUser? unansweredTurn(List<TrajectoryEvent> history) {
   for (final event in history.reversed) {
     switch (event) {
-      case ActionProposed(asksTheModel: true):
+      case ActionProposed(purpose: ProposalPurpose.answer):
         return null;
       case SaidByUser(startsTurn: true):
         return event;
-      case SaidByUser() || SaidByAgent() || ActionProposed() || TurnOnChain():
+      case SaidByUser() ||
+          SaidByAgent() ||
+          SummaryByAgent() ||
+          ActionProposed() ||
+          SummaryAsked() ||
+          TurnOnChain():
         continue;
     }
   }
