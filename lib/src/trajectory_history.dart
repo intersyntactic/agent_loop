@@ -28,7 +28,7 @@ import 'package:is_docking_station/is_docking_station.dart'
         decodeDecision;
 import 'package:is_logbook/service.dart' show Kind;
 import 'package:is_logbook_client/is_logbook_client.dart'
-    show Entry, LogbookReader, ObjectId;
+    show CaughtUp, Entry, LogbookReader, ObjectId;
 import 'package:is_effects/is_effects.dart'
     show Ran, Refused, decodeModelReply, decodeOutcome;
 import 'package:is_shapes/is_shapes.dart' show ActorId, EntryId;
@@ -37,11 +37,23 @@ import 'model_request_input.dart'
     show ModelInputRole, ModelInputTurn, inputTurnOf;
 import 'turn_envelope.dart';
 
+/// What [followTrajectoryHistory] hands on: each [TrajectoryEvent] in
+/// order, and one [CaughtUpWithTrajectory] once the backlog has been read.
+sealed class TrajectoryFeedItem {
+  const TrajectoryFeedItem();
+}
+
+/// The backlog is read: every item before this one had already happened
+/// when the loop started; every item after it is live.
+final class CaughtUpWithTrajectory extends TrajectoryFeedItem {
+  const CaughtUpWithTrajectory();
+}
+
 /// One event in a trajectory's history, in the order it actually happened:
 /// [SaidByUser] (an admitted message), [SaidByAgent] (the model's reply to
-/// a call the loop proposed) or [TurnOnChain] (an entry the loop itself
-/// wrote).
-sealed class TrajectoryEvent {
+/// a call the loop proposed), [ActionProposed] (a proposal this loop wrote)
+/// or [TurnOnChain] (a turn the loop itself wrote).
+sealed class TrajectoryEvent extends TrajectoryFeedItem {
   const TrajectoryEvent({required this.hash});
 
   /// The logbook entry this event was read from: what a
@@ -93,6 +105,21 @@ final class SaidByAgent extends TrajectoryEvent {
   final String text;
 }
 
+/// An action this loop proposed: [place] is the place it named, null when
+/// that was not a whole number; [asksTheModel] is whether its program was
+/// AskTheModel. A replayed history needs both: whether a message was
+/// already answered, and where the next proposal's place starts.
+final class ActionProposed extends TrajectoryEvent {
+  const ActionProposed({
+    required super.hash,
+    required this.place,
+    required this.asksTheModel,
+  });
+
+  final int? place;
+  final bool asksTheModel;
+}
+
 /// An entry the loop itself wrote on its own turn chain.
 final class TurnOnChain extends TrajectoryEvent {
   const TurnOnChain({required super.hash, required this.turn});
@@ -118,15 +145,16 @@ final _outcomeKind = Kind.parse(outcomeOfProposedActionKind)!;
 /// [TrajectoryEvent] since nothing here knows what to render of one — that
 /// is a module's job, done with [SaidByUser.rawEvent] once it is read.
 ///
-/// The loop's own proposals arrive too, and the airlock's outcome of each:
-/// a proposal that asks the model is remembered by id, and an outcome
-/// naming one, if the model ran, becomes a [SaidByAgent]. Every other
-/// proposal and outcome (a refused call, a web request) is skipped.
+/// The loop's own proposals arrive too, each as an [ActionProposed], and
+/// the airlock's outcome of each: an outcome answering a proposal that
+/// asked the model, if the model ran, becomes a [SaidByAgent]. Every other
+/// outcome (a refused call, a web request) is skipped. A proposal the
+/// airlock could not read as one is skipped too.
 ///
 /// Built with [Stream.expand] rather than `async*`, for the same reason as
 /// [followTrajectory]: `expand` passes a cancel straight through to
 /// [LogbookReader.subscribe], which an `async*` wrapper would not.
-Stream<TrajectoryEvent> followTrajectoryHistory(
+Stream<TrajectoryFeedItem> followTrajectoryHistory(
   LogbookReader reader, {
   required Kind turnKind,
   required ObjectId chainRoot,
@@ -142,31 +170,48 @@ Stream<TrajectoryEvent> followTrajectoryHistory(
     _outcomeKind,
   };
   return reader.subscribe(kinds: kinds).expand((item) {
-    if (item is! Entry) return const [];
-    if (item.kind == _proposedKind) {
-      if (ActionProposedByAgentLoop.read(_jsonOrNull(item.body))
-          case ActionProposedByAgentLoop(program: AskTheModel())) {
-        modelCalls.add(EntryId.parse(item.id.hex)!);
+    final Entry entry;
+    switch (item) {
+      case CaughtUp():
+        return const [CaughtUpWithTrajectory()];
+      case Entry():
+        entry = item;
+    }
+    if (entry.kind == _proposedKind) {
+      if (ActionProposedByAgentLoop.read(_jsonOrNull(entry.body))
+          case ActionProposedByAgentLoop(:final place, :final program)) {
+        final asksTheModel = program is AskTheModel;
+        if (asksTheModel) modelCalls.add(EntryId.parse(entry.id.hex)!);
+        return [
+          ActionProposed(
+            hash: entry.id,
+            place: place is int ? place : null,
+            asksTheModel: asksTheModel,
+          ),
+        ];
       }
       return const [];
     }
-    if (item.kind == _outcomeKind) {
-      final reply = _modelReplyIn(item.body, modelCalls);
+    if (entry.kind == _outcomeKind) {
+      final reply = _modelReplyIn(entry.body, modelCalls);
       return reply == null
           ? const []
-          : [SaidByAgent(hash: item.id, text: reply)];
+          : [SaidByAgent(hash: entry.id, text: reply)];
     }
-    if (item.kind == turnKind) {
-      final belongs = item.previous != null && onChain.contains(item.previous);
+    if (entry.kind == turnKind) {
+      final belongs =
+          entry.previous != null && onChain.contains(entry.previous);
       if (!belongs) return const [];
-      onChain.add(item.id);
-      return [TurnOnChain(hash: item.id, turn: TurnEnvelope.decode(item.body))];
+      onChain.add(entry.id);
+      return [
+        TurnOnChain(hash: entry.id, turn: TurnEnvelope.decode(entry.body)),
+      ];
     }
-    if (item.kind == _eventKind) {
-      rawEvents[item.id] = item;
+    if (entry.kind == _eventKind) {
+      rawEvents[entry.id] = entry;
       return const [];
     }
-    final decision = decodeDecision(item.kind, item.body);
+    final decision = decodeDecision(entry.kind, entry.body);
     if (decision case EventAdmittedToMission(
       :final event,
       reading: MessageSaid(:final node, :final addressInExternalSystem),
@@ -174,7 +219,7 @@ Stream<TrajectoryEvent> followTrajectoryHistory(
     )) {
       return [
         SaidByUser(
-          hash: item.id,
+          hash: entry.id,
           author: node.author,
           text: node.text,
           startsTurn: startsTurn ?? false,
@@ -219,12 +264,41 @@ Object? _jsonOrNull(List<int> body) {
 /// know.
 List<ModelInputTurn> trajectoryInput(List<TrajectoryEvent> history) => [
   for (final event in history)
-    switch (event) {
+    ?switch (event) {
       SaidByUser(:final text) => ModelInputTurn(ModelInputRole.user, text),
       SaidByAgent(:final text) => ModelInputTurn(
         ModelInputRole.assistant,
         text,
       ),
       TurnOnChain(:final turn) => inputTurnOf(turn),
+      ActionProposed() => null,
     },
 ];
+
+/// The message a loop started on [history] still owes an answer: the
+/// latest one that starts a turn, unless this loop has proposed a model
+/// call after it. Null when every such message was answered, or there is
+/// none. Only the latest counts: one answer, built from the whole history,
+/// covers any earlier ones that arrived while the loop was down.
+SaidByUser? unansweredTurn(List<TrajectoryEvent> history) {
+  for (final event in history.reversed) {
+    switch (event) {
+      case ActionProposed(asksTheModel: true):
+        return null;
+      case SaidByUser(startsTurn: true):
+        return event;
+      case SaidByUser() || SaidByAgent() || ActionProposed() || TurnOnChain():
+        continue;
+    }
+  }
+  return null;
+}
+
+/// The highest place this loop has proposed at in [history], or 0 for
+/// none: a restarted loop's next proposal goes after it, never reusing a
+/// place.
+int lastPlace(List<TrajectoryEvent> history) => [
+  0,
+  for (final event in history)
+    if (event case ActionProposed(:final place?)) place,
+].reduce((a, b) => a > b ? a : b);

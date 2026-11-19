@@ -134,15 +134,17 @@ void main() {
       'text': 'a loop-written turn',
     }, const Own());
 
-    final found = <TrajectoryEvent>[];
+    final items = <TrajectoryFeedItem>[];
     final sub = followTrajectoryHistory(
       reader,
       turnKind: turnKind,
       chainRoot: root,
-    ).listen(found.add);
+    ).listen(items.add);
     await Future<void>.delayed(const Duration(milliseconds: 200));
     await sub.cancel();
+    final found = items.whereType<TrajectoryEvent>().toList();
 
+    expect(items.last, isA<CaughtUpWithTrajectory>());
     expect(found, hasLength(2));
     expect(found[0], isA<SaidByUser>());
     expect((found[0] as SaidByUser).hash, admittedHash);
@@ -230,19 +232,32 @@ void main() {
     final ranHash = await answer(1, const Ran(ModelReply('yes, here')));
     await answer(2, const Refused('no sign-in'));
 
-    final found = <TrajectoryEvent>[];
+    final items = <TrajectoryFeedItem>[];
     final sub = followTrajectoryHistory(
       reader,
       turnKind: turnKind,
       chainRoot: root,
-    ).listen(found.add);
+    ).listen(items.add);
     await Future<void>.delayed(const Duration(milliseconds: 200));
     await sub.cancel();
     await returned.close();
+    final found = items.whereType<TrajectoryEvent>().toList();
 
-    expect(found, hasLength(1));
-    expect(found.single, isA<SaidByAgent>());
-    expect((found.single as SaidByAgent).hash, ranHash);
+    // Both proposals come back, each with its place; only the call that ran
+    // comes back as a reply.
+    expect(
+      [
+        for (final e in found)
+          switch (e) {
+            ActionProposed(:final place, :final asksTheModel) =>
+              'proposed $place model=$asksTheModel',
+            SaidByAgent(:final hash) => 'reply ${hash == ranHash}',
+            SaidByUser() || TurnOnChain() => '${e.runtimeType}',
+          },
+      ],
+      ['proposed 1 model=true', 'reply true', 'proposed 2 model=true'],
+    );
+    expect(lastPlace(found), 2);
     expect(jsonDecode(encodeModelInput(trajectoryInput(found))), [
       {'role': 'assistant', 'content': 'yes, here'},
     ]);
