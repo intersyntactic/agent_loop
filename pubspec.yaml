@@ -16,12 +16,15 @@ dependencies:
   is_logbook: ^0.2.1
   is_logbook_client: ^0.2.0
   is_shapes: ^0.6.0
-  is_airlock_api: ^0.10.2
-  is_effects: ^0.8.0
+  is_airlock_api:
+    git:
+      url: https://github.com/intersyntactic/airlock_api.git
+      ref: 0724473ebf59b4e0d2d6b3a81d581226afa87566
+  is_effects: ^0.9.0
   is_teams_module:
     git:
       url: https://github.com/intersyntactic/teams_module.git
-      ref: c2bd93ee76afb033bc0c2d6607b3acf79b93134a
+      ref: 059da3605bdf54009ff539134958351660cf8d57
 
 dev_dependencies:
   lints: ^6.1.0

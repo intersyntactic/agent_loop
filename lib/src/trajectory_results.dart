@@ -7,7 +7,7 @@
 /// [LogbookReader.subscribe], which an `async*` wrapper would not.
 library;
 
-import 'dart:convert' show jsonDecode, utf8;
+import 'dart:convert' show utf8;
 
 import 'package:is_airlock_api/is_airlock_api.dart'
     show outcomeOfProposedActionKind, readOutcomeOfProposedAction;
@@ -30,13 +30,9 @@ final _resultKind = Kind.parse(outcomeOfProposedActionKind)!;
 Stream<ReturnedResult> followResults(LogbookReader reader) =>
     reader.subscribe(kinds: {_resultKind}).expand((item) {
       if (item is! Entry) return const [];
-      final Object? json;
-      try {
-        json = jsonDecode(utf8.decode(item.body));
-      } on FormatException {
-        return const [];
-      }
-      final decoded = readOutcomeOfProposedAction(json);
+      final decoded = readOutcomeOfProposedAction(
+        utf8.decode(item.body, allowMalformed: true),
+      );
       return decoded == null
           ? const []
           : [

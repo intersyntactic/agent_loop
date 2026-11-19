@@ -156,11 +156,19 @@ Future<void> main(List<String> args) async {
             'agent_loop: decoded Teams event, serviceUrl '
             '${teamsEvent.serviceUrl}',
           );
+          final activity = teamsReplyActivity(value, resultEntry);
+          if (activity == null) {
+            stderr.writeln(
+              'agent_loop: the airlock draws no Teams message from this '
+              'reply, not posting',
+            );
+            break;
+          }
           final built = teamsPostRequest(
             TeamsPost(
               serviceUrl: teamsEvent.serviceUrl,
               conversation: teamsEvent.conversation,
-              activity: {'type': 'message', 'text': value.text},
+              activity: activity,
             ),
             _teamsSignIn,
           );

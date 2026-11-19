@@ -6,6 +6,7 @@ import 'dart:typed_data';
 import 'package:agent_loop/agent_loop.dart';
 import 'package:is_docking_station/is_docking_station.dart'
     show AddressInExternalSystem;
+import 'package:is_effects/is_effects.dart' show FinishedReply;
 import 'package:is_logbook_client/is_logbook_client.dart' show ObjectId;
 import 'package:is_shapes/is_shapes.dart' show ActorId;
 import 'package:test/test.dart';
@@ -24,7 +25,10 @@ SaidByUser _user(String seed, {bool startsTurn = true}) => SaidByUser(
 ActionProposed _proposed(String seed, int place, {bool model = true}) =>
     ActionProposed(hash: _id(seed), place: place, asksTheModel: model);
 
-SaidByAgent _agent(String seed) => SaidByAgent(hash: _id(seed), text: seed);
+SaidByAgent _agent(String seed) => SaidByAgent(
+  hash: _id(seed),
+  reply: FinishedReply(text: seed),
+);
 
 void main() {
   test('a message already answered by a model call is not owed', () {

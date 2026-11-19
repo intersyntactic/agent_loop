@@ -11,7 +11,7 @@
 library;
 
 import 'dart:async';
-import 'dart:convert' show jsonDecode, utf8;
+import 'dart:convert' show utf8;
 
 import 'package:is_airlock_api/is_airlock_api.dart'
     show
@@ -30,7 +30,14 @@ import 'package:is_logbook/service.dart' show Kind;
 import 'package:is_logbook_client/is_logbook_client.dart'
     show CaughtUp, Entry, LogbookReader, ObjectId;
 import 'package:is_effects/is_effects.dart'
-    show Ran, Refused, decodeModelReply, decodeOutcome;
+    show
+        CutOffReply,
+        FinishedReply,
+        ModelReply,
+        Ran,
+        Refused,
+        decodeModelReply,
+        decodeOutcome;
 import 'package:is_shapes/is_shapes.dart' show ActorId, EntryId;
 
 import 'model_request_input.dart'
@@ -98,11 +105,15 @@ final class SaidByUser extends TrajectoryEvent {
 
 /// The model's reply to a call this loop proposed, read from the airlock's
 /// outcome entry for it: [hash] is that outcome entry, which is what the
-/// model's later requests were built from.
+/// model's later requests were built from. [reply] says whether the model
+/// finished or was cut off, and what the call used when the driver could
+/// tell.
 final class SaidByAgent extends TrajectoryEvent {
-  const SaidByAgent({required super.hash, required this.text});
+  const SaidByAgent({required super.hash, required this.reply});
 
-  final String text;
+  final ModelReply reply;
+
+  String get text => reply.text;
 }
 
 /// An action this loop proposed: [place] is the place it named, null when
@@ -178,7 +189,7 @@ Stream<TrajectoryFeedItem> followTrajectoryHistory(
         entry = item;
     }
     if (entry.kind == _proposedKind) {
-      if (ActionProposedByAgentLoop.read(_jsonOrNull(entry.body))
+      if (ActionProposedByAgentLoop.read(_text(entry.body))
           case ActionProposedByAgentLoop(:final place, :final program)) {
         final asksTheModel = program is AskTheModel;
         if (asksTheModel) modelCalls.add(EntryId.parse(entry.id.hex)!);
@@ -196,7 +207,7 @@ Stream<TrajectoryFeedItem> followTrajectoryHistory(
       final reply = _modelReplyIn(entry.body, modelCalls);
       return reply == null
           ? const []
-          : [SaidByAgent(hash: entry.id, text: reply)];
+          : [SaidByAgent(hash: entry.id, reply: reply)];
     }
     if (entry.kind == turnKind) {
       final belongs =
@@ -232,14 +243,14 @@ Stream<TrajectoryFeedItem> followTrajectoryHistory(
   });
 }
 
-/// The model's reply text in [body], an outcome entry's, when it answers
-/// one of [modelCalls] and the model ran; null otherwise.
-String? _modelReplyIn(List<int> body, Set<EntryId> modelCalls) {
-  final outcome = readOutcomeOfProposedAction(_jsonOrNull(body));
+/// The model's reply in [body], an outcome entry's, when it answers one of
+/// [modelCalls] and the model ran; null otherwise.
+ModelReply? _modelReplyIn(List<int> body, Set<EntryId> modelCalls) {
+  final outcome = readOutcomeOfProposedAction(_text(body));
   if (outcome == null || !modelCalls.contains(outcome.proposed)) return null;
   try {
     return switch (decodeOutcome(outcome.result, decodeModelReply)) {
-      Ran(:final output) => output.text,
+      Ran(:final output) => output,
       Refused() => null,
     };
   } on FormatException {
@@ -247,13 +258,9 @@ String? _modelReplyIn(List<int> body, Set<EntryId> modelCalls) {
   }
 }
 
-Object? _jsonOrNull(List<int> body) {
-  try {
-    return jsonDecode(utf8.decode(body));
-  } on FormatException {
-    return null;
-  }
-}
+/// An entry's body as the text the airlock's readers take; a body that is
+/// not UTF-8 reads as text they then refuse, rather than throwing here.
+String _text(List<int> body) => utf8.decode(body, allowMalformed: true);
 
 /// [history], oldest first, as a model request's turns: one per event.
 /// [TurnOnChain] goes through [inputTurnOf]'s own node-shape cases; since
@@ -266,14 +273,21 @@ List<ModelInputTurn> trajectoryInput(List<TrajectoryEvent> history) => [
   for (final event in history)
     ?switch (event) {
       SaidByUser(:final text) => ModelInputTurn(ModelInputRole.user, text),
-      SaidByAgent(:final text) => ModelInputTurn(
+      SaidByAgent(:final reply) => ModelInputTurn(
         ModelInputRole.assistant,
-        text,
+        switch (reply) {
+          FinishedReply(:final text) => text,
+          CutOffReply(:final text) => '$text\n\n$_cutOffNote',
+        },
       ),
       TurnOnChain(:final turn) => inputTurnOf(turn),
       ActionProposed() => null,
     },
 ];
+
+/// Follows a cut-off reply's text in the model's own history, so it knows
+/// that reply stopped short rather than reading it as finished.
+const _cutOffNote = '(This reply was cut off before it finished.)';
 
 /// The message a loop started on [history] still owes an answer: the
 /// latest one that starts a turn, unless this loop has proposed a model
