@@ -19,7 +19,20 @@ import 'turn_envelope.dart';
 /// appends always follow its true tip rather than racing each other to
 /// name it.
 final class TrajectoryChain {
-  TrajectoryChain({required this.writer, required this.kind, this._tip});
+  TrajectoryChain({required this.writer, required this.kind, this._tip})
+    : _tipUnconfirmed = false;
+
+  /// A chain this loop may already have written to in an earlier run,
+  /// starting from [root]: its first append follows whatever tip the
+  /// service names, once, since only this loop's user writes this chain and
+  /// so that tip is this loop's own last entry. Every append after that must
+  /// follow the tip this chain tracks itself.
+  TrajectoryChain.resumed({
+    required this.writer,
+    required this.kind,
+    required ObjectId root,
+  }) : _tip = root,
+       _tipUnconfirmed = true;
 
   /// Where this chain's entries are sent.
   final LogbookWriter writer;
@@ -28,6 +41,7 @@ final class TrajectoryChain {
   final Kind kind;
 
   ObjectId? _tip;
+  bool _tipUnconfirmed;
   Future<void> _queue = Future.value();
 
   /// The logbook entry this chain's next append follows; null before its
@@ -56,7 +70,17 @@ final class TrajectoryChain {
   }
 
   Future<ObjectId> _appendEntryOne(Kind entryKind, List<int> bytes) async {
-    final entry = await writer.append(entryKind, _tip, bytes);
+    final ObjectId entry;
+    try {
+      entry = await writer.append(entryKind, _tip, bytes);
+    } on LogbookWriteRefused catch (e) {
+      final serviceTip = e.tip;
+      if (!_tipUnconfirmed || serviceTip == null) rethrow;
+      _tipUnconfirmed = false;
+      _tip = serviceTip;
+      return _appendEntryOne(entryKind, bytes);
+    }
+    _tipUnconfirmed = false;
     _tip = entry;
     return entry;
   }

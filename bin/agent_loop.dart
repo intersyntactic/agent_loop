@@ -94,7 +94,11 @@ Future<void> main(List<String> args) async {
 
   final writer = LogbookWriter(options.recordWrite);
   final turnKind = Kind.parse(_turnKind)!;
-  final chain = TrajectoryChain(writer: writer, kind: turnKind, tip: root);
+  final chain = TrajectoryChain.resumed(
+    writer: writer,
+    kind: turnKind,
+    root: root,
+  );
   final link = TrajectoryCrux(chain: chain, returned: followResults(reader));
 
   final history = <TrajectoryEvent>[];

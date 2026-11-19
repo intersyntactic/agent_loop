@@ -32,10 +32,12 @@ final class LogbookWriteUncertain extends LogbookWriteFailure {
 }
 
 /// Nothing was added: the service answered `refused` outright, or named a
-/// different tip than [previous]. Safe to send again, naming the tip the
-/// service gave if it gave one.
+/// different [tip] than the one the entry followed. Safe to send again,
+/// naming [tip] if the service gave one.
 final class LogbookWriteRefused extends LogbookWriteFailure {
-  const LogbookWriteRefused(super.why);
+  const LogbookWriteRefused(super.why, {this.tip});
+
+  final ObjectId? tip;
 }
 
 /// Appends entries to one logbook, over the Unix socket its service
@@ -64,6 +66,7 @@ final class LogbookWriter {
       client.AlreadyRecorded(:final entry) => entry,
       client.NotTip(:final tip) => throw LogbookWriteRefused(
         'not the tip, which is ${tip.hex}',
+        tip: tip,
       ),
       client.WriteRefused(:final why) => throw LogbookWriteRefused(why),
       client.WriteFailed(:final why) => throw LogbookWriteUncertain(why),

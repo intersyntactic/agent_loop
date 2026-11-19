@@ -140,4 +140,96 @@ void main() {
     expect(found[1].$1, second);
     expect(found[1].$2.node['text'], 'hello');
   });
+
+  test('a restarted loop appends after its own last entry, not its root; '
+      'a chain that was not resumed is still refused', () async {
+    final root = await assign(
+      trajectory: trajectoryUnderTest,
+      mission: client.ObjectId.of(Uint8List.fromList('mission-d'.codeUnits))
+          .hex,
+      loopUser: uid,
+      suit: '1002',
+    );
+    final writer = LogbookWriter('${tmp.path}/logbook.sock');
+
+    // The first run: two entries after the root.
+    final firstRun = TrajectoryChain(writer: writer, kind: turnKind, tip: root);
+    await firstRun.append({'shape': 'Note', 'text': 'turn 1'}, const Own());
+    final lastOfFirstRun = await firstRun.append({
+      'shape': 'Note',
+      'text': 'turn 1 post',
+    }, const Own());
+
+    // Starting again from the root without resuming is refused, naming the
+    // real tip.
+    final notResumed = TrajectoryChain(
+      writer: writer,
+      kind: turnKind,
+      tip: root,
+    );
+    await expectLater(
+      notResumed.append({'shape': 'Note', 'text': 'x'}, const Own()),
+      throwsA(
+        isA<LogbookWriteRefused>().having((e) => e.tip, 'tip', lastOfFirstRun),
+      ),
+    );
+
+    // The restarted run follows its own last entry, then tracks its own tip.
+    final restarted = TrajectoryChain.resumed(
+      writer: writer,
+      kind: turnKind,
+      root: root,
+    );
+    final turn2 = await restarted.append({
+      'shape': 'Note',
+      'text': 'turn 2',
+    }, const Own());
+    final turn2Post = await restarted.append({
+      'shape': 'Note',
+      'text': 'turn 2 post',
+    }, const Own());
+
+    final found = <client.ObjectId>[];
+    final sub = followTrajectory(
+      reader,
+      kind: turnKind,
+      chainRoot: root,
+    ).listen((e) => found.add(e.$1));
+    await Future<void>.delayed(const Duration(milliseconds: 200));
+    await sub.cancel();
+
+    expect(found.skip(2), [turn2, turn2Post]);
+    expect(found[1], lastOfFirstRun);
+  });
+
+  test('a resumed chain adopts the service\'s tip only once', () async {
+    final root = await assign(
+      trajectory: trajectoryUnderTest,
+      mission: client.ObjectId.of(Uint8List.fromList('mission-e'.codeUnits))
+          .hex,
+      loopUser: uid,
+      suit: '1002',
+    );
+    final writer = LogbookWriter('${tmp.path}/logbook.sock');
+    final resumed = TrajectoryChain.resumed(
+      writer: writer,
+      kind: turnKind,
+      root: root,
+    );
+    await resumed.append({'shape': 'Note', 'text': 'mine'}, const Own());
+
+    // Another writer moves the tip on behind this chain's back: after its
+    // first append, a resumed chain refuses rather than following it.
+    final other = TrajectoryChain(
+      writer: writer,
+      kind: turnKind,
+      tip: resumed.tip,
+    );
+    await other.append({'shape': 'Note', 'text': 'not mine'}, const Own());
+
+    await expectLater(
+      resumed.append({'shape': 'Note', 'text': 'mine again'}, const Own()),
+      throwsA(isA<LogbookWriteRefused>()),
+    );
+  });
 }
