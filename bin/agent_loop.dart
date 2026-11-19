@@ -99,14 +99,8 @@ Future<void> main(List<String> args) async {
 
   final history = <TrajectoryEvent>[];
   var turn = 0;
-  await for (final event in followTrajectoryHistory(
-    reader,
-    turnKind: turnKind,
-    chainRoot: root,
-  )) {
-    history.add(event);
-    if (event is! SaidByUser || !event.startsTurn) continue;
 
+  Future<void> answer(SaidByUser event) async {
     final request = encodeModelInput(trajectoryInput(history));
     final requestHash = await recordModelRequestOnTrajectory(
       chain,
@@ -203,6 +197,34 @@ Future<void> main(List<String> args) async {
         // runOrRefusal's own then never returns one: it is called only
         // with the output, never asked to propose a further action.
         throw StateError('runOrRefusal returned an unresolved Action');
+    }
+  }
+
+  // The backlog is only read, never answered as it arrives: a message in it
+  // may already have its answer further on. Once caught up, the loop
+  // answers the one message still owed, if any, then every new one live.
+  var caughtUp = false;
+  await for (final item in followTrajectoryHistory(
+    reader,
+    turnKind: turnKind,
+    chainRoot: root,
+  )) {
+    switch (item) {
+      case CaughtUpWithTrajectory():
+        if (caughtUp) continue;
+        caughtUp = true;
+        turn = lastPlace(history);
+        final owed = unansweredTurn(history);
+        stdout.writeln(
+          'agent_loop: caught up at place $turn, '
+          '${owed == null ? 'nothing owed' : 'answering ${owed.hash.hex}'}',
+        );
+        if (owed != null) await answer(owed);
+      case TrajectoryEvent event:
+        history.add(event);
+        if (caughtUp && event is SaidByUser && event.startsTurn) {
+          await answer(event);
+        }
     }
   }
 }
