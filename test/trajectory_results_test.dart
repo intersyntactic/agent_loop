@@ -65,6 +65,9 @@ void main() {
 
     expect(found, hasLength(1));
     expect(found.single.proposed, proposed);
-    expect(found.single.result, {'kind': 'ran', 'output': 'ok'});
+    expect(jsonDecode(found.single.body), {
+      'proposed': proposed.hex,
+      'result': {'kind': 'ran', 'output': 'ok'},
+    });
   });
 }

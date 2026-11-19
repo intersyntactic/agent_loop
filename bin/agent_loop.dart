@@ -9,10 +9,10 @@
 /// and, whenever the turn rule says the agent should answer, records a
 /// model request and proposes [AskTheModel] through its crux, naming it.
 ///
-/// The `place` a proposal names is its turn number, counted from 1: the
-/// airlock service's P for this trajectory kind is an int (airlock
-/// lib/src/airlock_subscriber.dart), and one proposal per turn here means
-/// each turn is its own place.
+/// Each answer is one turn, counted from 0, with one crux for the turn: the
+/// model call is its step 0 and the Teams post its step 1, so a proposal's
+/// place is `[turn, step]`. A restarted loop's next turn follows the latest
+/// place in its history.
 ///
 /// Once it has the model's reply, posts it to Teams: the triggering
 /// SaidByUser's rawEventEntry names the relay's own raw activity, read back
@@ -36,6 +36,7 @@ import 'package:is_airlock_api/is_airlock_api.dart'
         Done,
         Failed,
         ModelCall,
+        PlaceInTrajectory,
         Program,
         Projection,
         Result,
@@ -102,7 +103,7 @@ Future<void> main(List<String> args) async {
   final link = TrajectoryCrux(chain: chain, returned: followResults(reader));
 
   final history = <TrajectoryEvent>[];
-  var turn = 0;
+  var nextTurn = 0;
 
   Future<void> answer(SaidByUser event) async {
     final request = encodeModelInput(trajectoryInput(history));
@@ -114,7 +115,10 @@ Future<void> main(List<String> args) async {
     );
     stdout.writeln('agent_loop: recorded model-request ${requestHash.hex}');
 
-    final crux = Crux.through(link, place: ++turn);
+    // One crux for the whole turn: the model call is its step 0, the post
+    // its step 1.
+    final turn = nextTurn++;
+    final crux = Crux.through(link, turn: turn);
     final asked = Program.askTheModel.runOrRefusal<ModelReply>(
       ModelCall(
         signIn: options.modelSignIn,
@@ -128,7 +132,7 @@ Future<void> main(List<String> args) async {
       case Done(:final value):
         stdout.writeln('agent_loop: model replied: ${value.text}');
         try {
-          final resultEntry = link.resultEntryAt(turn);
+          final resultEntry = link.resultEntryAt(PlaceInTrajectory.at(turn, 0));
           if (resultEntry == null) {
             stderr.writeln(
               'agent_loop: no result entry recorded for turn $turn, not '
@@ -192,7 +196,7 @@ Future<void> main(List<String> args) async {
             then: (_) => const Done(null),
           );
           stdout.writeln('agent_loop: proposing the Teams post');
-          switch (await posted.next(Crux.through(link, place: ++turn))) {
+          switch (await posted.next(crux)) {
             case Done():
               stdout.writeln('agent_loop: posted the reply to Teams');
             case Failed(:final why):
@@ -225,10 +229,11 @@ Future<void> main(List<String> args) async {
       case CaughtUpWithTrajectory():
         if (caughtUp) continue;
         caughtUp = true;
-        turn = lastPlace(history);
+        final last = lastPlace(history);
+        nextTurn = (last?.turn ?? -1) + 1;
         final owed = unansweredTurn(history);
         stdout.writeln(
-          'agent_loop: caught up at place $turn, '
+          'agent_loop: caught up at place ${last ?? 'none'}, '
           '${owed == null ? 'nothing owed' : 'answering ${owed.hash.hex}'}',
         );
         if (owed != null) await answer(owed);

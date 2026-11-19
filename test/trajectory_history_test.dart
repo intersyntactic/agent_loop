@@ -14,6 +14,7 @@ import 'package:is_airlock_api/is_airlock_api.dart'
         Crux,
         Done,
         ModelCall,
+        PlaceInTrajectory,
         Program,
         outcomeOfProposedActionKind,
         outcomeOfProposedActionToJson;
@@ -203,29 +204,26 @@ void main() {
         then: (ModelReply reply) => Done(reply),
       );
       final before = chain.tip;
-      final done = asked.next(Crux.through(link, place: place));
+      final done = asked.next(Crux.through(link, turn: place));
       while (chain.tip == before) {
         await Future<void>.delayed(const Duration(milliseconds: 10));
       }
       final proposed = EntryId.parse(chain.tip!.hex)!;
+      final body = jsonEncode(
+        outcomeOfProposedActionToJson(
+          proposed,
+          encodeOutcome(outcome, encodeModelReply),
+        ),
+      );
       final written = await rawWriter.write(
         outcomeKind,
-        Uint8List.fromList(
-          utf8.encode(
-            jsonEncode(
-              outcomeOfProposedActionToJson(
-                proposed,
-                encodeOutcome(outcome, encodeModelReply),
-              ),
-            ),
-          ),
-        ),
+        Uint8List.fromList(utf8.encode(body)),
       );
       final entry = (written as client.Written).entry;
       returned.add((
         proposed: proposed,
         resultEntry: EntryId.parse(entry.hex)!,
-        result: encodeOutcome(outcome, encodeModelReply),
+        body: body,
       ));
       await done;
       return entry;
@@ -267,14 +265,14 @@ void main() {
           },
       ],
       [
-        'proposed 1 model=true',
+        'proposed 1.0 model=true',
         'reply ran',
-        'proposed 2 model=true',
-        'proposed 3 model=true',
+        'proposed 2.0 model=true',
+        'proposed 3.0 model=true',
         'reply cut',
       ],
     );
-    expect(lastPlace(found), 3);
+    expect(lastPlace(found), PlaceInTrajectory.at(3, 0));
     // A cut-off reply reaches the model marked as cut off, never as finished.
     expect(jsonDecode(encodeModelInput(trajectoryInput(found))), [
       {'role': 'assistant', 'content': 'yes, here'},

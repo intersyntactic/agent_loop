@@ -1,6 +1,6 @@
 /// The feed of [ReturnedResult]s a [TrajectoryCrux] waits on: every
 /// [outcomeOfProposedActionKind] entry loop_launcher's own feed hands
-/// this loop, decoded once.
+/// this loop, read once.
 ///
 /// Built with [Stream.expand] rather than `async*`, for the same reason as
 /// [followTrajectory]: `expand` passes a cancel straight through to
@@ -20,26 +20,25 @@ import 'trajectory_crux.dart';
 
 final _resultKind = Kind.parse(outcomeOfProposedActionKind)!;
 
-/// Every [outcomeOfProposedActionKind] entry [reader] is fed, decoded
-/// through [readOutcomeOfProposedAction], with the entry's own id
-/// alongside (a logbook [ObjectId], read back as the [EntryId] a later
-/// proposal's `drawnFrom` names, the same hex round trip
+/// Every [outcomeOfProposedActionKind] entry [reader] is fed: the proposal
+/// it names, read through [readOutcomeOfProposedAction], its whole body as
+/// text, and the entry's own id (a logbook [ObjectId], read back as the
+/// [EntryId] a later proposal's `drawnFrom` names, the same hex round trip
 /// [recordModelRequestOnTrajectory]'s callers use); an entry whose body is
 /// not JSON, or does not decode as one, is skipped rather than thrown,
 /// since the airlock writes nothing else under this kind.
 Stream<ReturnedResult> followResults(LogbookReader reader) =>
     reader.subscribe(kinds: {_resultKind}).expand((item) {
       if (item is! Entry) return const [];
-      final decoded = readOutcomeOfProposedAction(
-        utf8.decode(item.body, allowMalformed: true),
-      );
+      final body = utf8.decode(item.body, allowMalformed: true);
+      final decoded = readOutcomeOfProposedAction(body);
       return decoded == null
           ? const []
           : [
               (
                 proposed: decoded.proposed,
                 resultEntry: EntryId.parse(item.id.hex)!,
-                result: decoded.result,
+                body: body,
               ),
             ];
     });

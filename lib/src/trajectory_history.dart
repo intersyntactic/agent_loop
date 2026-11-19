@@ -17,6 +17,7 @@ import 'package:is_airlock_api/is_airlock_api.dart'
     show
         ActionProposedByAgentLoop,
         AskTheModel,
+        PlaceInTrajectory,
         outcomeOfProposedActionKind,
         readOutcomeOfProposedAction;
 import 'package:is_docking_station/is_docking_station.dart'
@@ -116,10 +117,10 @@ final class SaidByAgent extends TrajectoryEvent {
   String get text => reply.text;
 }
 
-/// An action this loop proposed: [place] is the place it named, null when
-/// that was not a whole number; [asksTheModel] is whether its program was
-/// AskTheModel. A replayed history needs both: whether a message was
-/// already answered, and where the next proposal's place starts.
+/// An action this loop proposed: [place] is the place it named;
+/// [asksTheModel] is whether its program was AskTheModel. A replayed
+/// history needs both: whether a message was already answered, and which
+/// turn the next proposal starts.
 final class ActionProposed extends TrajectoryEvent {
   const ActionProposed({
     required super.hash,
@@ -127,7 +128,7 @@ final class ActionProposed extends TrajectoryEvent {
     required this.asksTheModel,
   });
 
-  final int? place;
+  final PlaceInTrajectory place;
   final bool asksTheModel;
 }
 
@@ -196,7 +197,7 @@ Stream<TrajectoryFeedItem> followTrajectoryHistory(
         return [
           ActionProposed(
             hash: entry.id,
-            place: place is int ? place : null,
+            place: place,
             asksTheModel: asksTheModel,
           ),
         ];
@@ -308,11 +309,14 @@ SaidByUser? unansweredTurn(List<TrajectoryEvent> history) {
   return null;
 }
 
-/// The highest place this loop has proposed at in [history], or 0 for
-/// none: a restarted loop's next proposal goes after it, never reusing a
-/// place.
-int lastPlace(List<TrajectoryEvent> history) => [
-  0,
-  for (final event in history)
-    if (event case ActionProposed(:final place?)) place,
-].reduce((a, b) => a > b ? a : b);
+/// The latest place this loop has proposed at in [history], or null for
+/// none: a restarted loop's next turn goes after it, never reusing a place.
+PlaceInTrajectory? lastPlace(List<TrajectoryEvent> history) =>
+    [
+      for (final event in history)
+        if (event case ActionProposed(:final place)) place,
+    ].fold(
+      null,
+      (latest, place) =>
+          latest == null || place.compareTo(latest) > 0 ? place : latest,
+    );
