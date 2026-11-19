@@ -3,11 +3,30 @@
 // entry (built with is_docking_station's own encodeDecision, not
 // hand-written JSON) interleaves correctly with the loop's own turns, in
 // logbook order, and renders the same as the old UserSaid-turn path did.
-import 'dart:convert' show utf8;
+import 'dart:async';
+import 'dart:convert' show jsonEncode, utf8;
 import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:agent_loop/agent_loop.dart';
+import 'package:is_airlock_api/is_airlock_api.dart'
+    show
+        Crux,
+        Done,
+        ModelCall,
+        Program,
+        outcomeOfProposedActionKind,
+        outcomeOfProposedActionToJson;
+import 'package:is_effects/is_effects.dart'
+    show
+        ModelName,
+        ModelReply,
+        ModelSignInName,
+        Outcome,
+        Ran,
+        Refused,
+        encodeModelReply,
+        encodeOutcome;
 import 'package:is_conversation_shapes/is_conversation_shapes.dart'
     show SourceMessageId, UserSaid;
 import 'package:is_docking_station/is_docking_station.dart';
@@ -15,7 +34,8 @@ import 'package:is_logbook/is_logbook.dart';
 import 'package:is_logbook/service.dart';
 import 'package:is_logbook_client/is_logbook_client.dart' show LogbookReader;
 import 'package:is_logbook_client/is_logbook_client.dart' as client;
-import 'package:is_shapes/is_shapes.dart' show ActorId, DecidedBy, TrajectoryId;
+import 'package:is_shapes/is_shapes.dart'
+    show ActorId, DecidedBy, EntryId, TrajectoryId;
 import 'package:test/test.dart';
 
 void main() {
@@ -37,7 +57,8 @@ void main() {
     final senderTable = SenderTable.parse(
       Uint8List.fromList(
         '$uid turn users-assigned-to-trajectory '
-                'event-admitted-to-mission event\n'
+                'event-admitted-to-mission event '
+                'action-proposed-by-agent-loop outcome-of-proposed-action\n'
             .codeUnits,
       ),
     );
@@ -140,5 +161,88 @@ void main() {
       renderTrajectoryHistory(found),
       'User: hey are you there\nUser: a loop-written turn',
     );
+  });
+
+  test('a model call the airlock ran comes back as the agent\'s reply; a '
+      'refused one is skipped', () async {
+    final rootResult = await rawWriter.write(
+      Kind.usersAssignedToTrajectory,
+      Uint8List.fromList(
+        '{"trajectory":"$trajectoryUnderTest",'
+                '"mission":"${client.ObjectId.of(Uint8List.fromList('m'.codeUnits)).hex}",'
+                '"loopUser":"$uid","suit":"1002"}'
+            .codeUnits,
+      ),
+    );
+    final root = (rootResult as client.Written).entry;
+    final chain = TrajectoryChain(
+      writer: LogbookWriter('${tmp.path}/logbook.sock'),
+      kind: turnKind,
+      tip: root,
+    );
+
+    // Each call is proposed through the loop's real crux; the airlock's
+    // answer is written as it would write it, then handed back to the crux.
+    final returned = StreamController<ReturnedResult>();
+    final link = TrajectoryCrux(chain: chain, returned: returned.stream);
+    final outcomeKind = Kind.parse(outcomeOfProposedActionKind)!;
+    Future<client.ObjectId> answer(
+      int place,
+      Outcome<ModelReply> outcome,
+    ) async {
+      final asked = Program.askTheModel.runOrRefusal<ModelReply>(
+        ModelCall(
+          signIn: ModelSignInName.parse('anthropic-api')!,
+          model: ModelName.parse('claude-opus-5-5')!,
+          request: EntryId.parse('ab' * 32)!,
+        ),
+        then: (ModelReply reply) => Done(reply),
+      );
+      final before = chain.tip;
+      final done = asked.next(Crux.through(link, place: place));
+      while (chain.tip == before) {
+        await Future<void>.delayed(const Duration(milliseconds: 10));
+      }
+      final proposed = EntryId.parse(chain.tip!.hex)!;
+      final written = await rawWriter.write(
+        outcomeKind,
+        Uint8List.fromList(
+          utf8.encode(
+            jsonEncode(
+              outcomeOfProposedActionToJson(
+                proposed,
+                encodeOutcome(outcome, encodeModelReply),
+              ),
+            ),
+          ),
+        ),
+      );
+      final entry = (written as client.Written).entry;
+      returned.add((
+        proposed: proposed,
+        resultEntry: EntryId.parse(entry.hex)!,
+        result: encodeOutcome(outcome, encodeModelReply),
+      ));
+      await done;
+      return entry;
+    }
+
+    final ranHash = await answer(1, const Ran(ModelReply('yes, here')));
+    await answer(2, const Refused('no sign-in'));
+
+    final found = <TrajectoryEvent>[];
+    final sub = followTrajectoryHistory(
+      reader,
+      turnKind: turnKind,
+      chainRoot: root,
+    ).listen(found.add);
+    await Future<void>.delayed(const Duration(milliseconds: 200));
+    await sub.cancel();
+    await returned.close();
+
+    expect(found, hasLength(1));
+    expect(found.single, isA<SaidByAgent>());
+    expect((found.single as SaidByAgent).hash, ranHash);
+    expect(renderTrajectoryHistory(found), 'Agent: yes, here');
   });
 }
