@@ -157,10 +157,10 @@ packages:
     dependency: "direct main"
     description:
       name: is_airlock_api
-      sha256: b97e8ea37e0bdd6f9040858fd39c65f0ba56bed7ef2bb93d114cf8cfb086740e
+      sha256: "2620b63823b246322d38dcbcb778a8589a5ebc242e457a872660d4a3d09f640d"
       url: "https://pub.dev"
     source: hosted
-    version: "0.12.0"
+    version: "0.12.1"
   is_annotation_shapes:
     dependency: transitive
     description:
@@ -189,18 +189,18 @@ packages:
     dependency: "direct main"
     description:
       name: is_docking_station
-      sha256: "18d390a6bda5c6c6b88b38e455918424a053f1a163e89b455de7eeb80f52c3ba"
+      sha256: bca1985d93249cf15b0a7661fa8546d1d60ff3a3f0cdbde1cd99641125f4b346
       url: "https://pub.dev"
     source: hosted
-    version: "0.1.0"
+    version: "0.2.0"
   is_effects:
     dependency: "direct main"
     description:
       name: is_effects
-      sha256: e1973020e8bd79d4b9f9185171fb7f623c3de3e82fc72d5f9e71e08ec32064ca
+      sha256: bb3936fec38b2adc0aa4df95a822c444183528a44d85f2501bc019ffb8cf7d43
       url: "https://pub.dev"
     source: hosted
-    version: "0.9.0"
+    version: "0.11.0"
   is_logbook:
     dependency: "direct main"
     description:
@@ -237,8 +237,8 @@ packages:
     dependency: "direct main"
     description:
       path: "."
-      ref: "17802e8a5317f49cb02574922d4e37428c4f9219"
-      resolved-ref: "17802e8a5317f49cb02574922d4e37428c4f9219"
+      ref: "9a3bf6877343e558c6b03871bcb0431f2604cdd5"
+      resolved-ref: "9a3bf6877343e558c6b03871bcb0431f2604cdd5"
       url: "https://github.com/intersyntactic/teams_module.git"
     source: git
     version: "0.0.1"
