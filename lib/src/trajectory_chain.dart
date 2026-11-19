@@ -19,8 +19,7 @@ import 'turn_envelope.dart';
 /// appends always follow its true tip rather than racing each other to
 /// name it.
 final class TrajectoryChain {
-  TrajectoryChain({required this.writer, required this.kind, ObjectId? tip})
-    : _tip = tip;
+  TrajectoryChain({required this.writer, required this.kind, this._tip});
 
   /// Where this chain's entries are sent.
   final LogbookWriter writer;

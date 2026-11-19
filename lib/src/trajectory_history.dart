@@ -33,7 +33,8 @@ import 'package:is_effects/is_effects.dart'
     show Ran, Refused, decodeModelReply, decodeOutcome;
 import 'package:is_shapes/is_shapes.dart' show ActorId, EntryId;
 
-import 'model_request_render.dart' show renderRequestBody;
+import 'model_request_input.dart'
+    show ModelInputRole, ModelInputTurn, inputTurnOf;
 import 'turn_envelope.dart';
 
 /// One event in a trajectory's history, in the order it actually happened:
@@ -209,19 +210,21 @@ Object? _jsonOrNull(List<int> body) {
   }
 }
 
-/// [history], oldest first, as one plain-text body: one line per event.
-/// [TurnOnChain] renders through [renderRequestBody]'s own node-shape
-/// cases; since ReplyText turns are dead and no `UserSaid` ever arrives
-/// this way any more (it arrives as [SaidByUser] instead), nothing
-/// currently reaches this case — kept for whatever the loop's own chain
-/// ends up carrying. Throws [FormatException] for a
-/// [TurnOnChain] whose node shape it doesn't know how to render.
-String renderTrajectoryHistory(List<TrajectoryEvent> history) => history
-    .map(
-      (event) => switch (event) {
-        SaidByUser(:final text) => 'User: $text',
-        SaidByAgent(:final text) => 'Agent: $text',
-        TurnOnChain(:final turn) => renderRequestBody([turn]),
-      },
-    )
-    .join('\n');
+/// [history], oldest first, as a model request's turns: one per event.
+/// [TurnOnChain] goes through [inputTurnOf]'s own node-shape cases; since
+/// ReplyText turns are dead and no `UserSaid` ever arrives this way any
+/// more (it arrives as [SaidByUser] instead), nothing currently reaches
+/// this case — kept for whatever the loop's own chain ends up carrying.
+/// Throws [FormatException] for a [TurnOnChain] whose node shape it doesn't
+/// know.
+List<ModelInputTurn> trajectoryInput(List<TrajectoryEvent> history) => [
+  for (final event in history)
+    switch (event) {
+      SaidByUser(:final text) => ModelInputTurn(ModelInputRole.user, text),
+      SaidByAgent(:final text) => ModelInputTurn(
+        ModelInputRole.assistant,
+        text,
+      ),
+      TurnOnChain(:final turn) => inputTurnOf(turn),
+    },
+];
