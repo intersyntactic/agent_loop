@@ -163,6 +163,48 @@ void main() {
     );
   });
 
+  test('a HistorySummarized turn on the loop\'s chain comes back as a '
+      'boundary, not a turn', () async {
+    final rootResult = await rawWriter.write(
+      Kind.usersAssignedToTrajectory,
+      Uint8List.fromList(
+        '{"trajectory":"$trajectoryUnderTest",'
+                '"mission":"${client.ObjectId.of(Uint8List.fromList('m'.codeUnits)).hex}",'
+                '"loopUser":"$uid","suit":"1002"}'
+            .codeUnits,
+      ),
+    );
+    final root = (rootResult as client.Written).entry;
+    final chain = TrajectoryChain(
+      writer: LogbookWriter('${tmp.path}/logbook.sock'),
+      kind: turnKind,
+      tip: root,
+    );
+    final marker = HistorySummarized(
+      summary: client.ObjectId.of(Uint8List.fromList('s'.codeUnits)),
+      upTo: client.ObjectId.of(Uint8List.fromList('u'.codeUnits)),
+    );
+    final markerHash = await chain.append(marker.toJson(), const Own());
+
+    final found = <TrajectoryEvent>[];
+    final sub = followTrajectoryHistory(
+      reader,
+      turnKind: turnKind,
+      chainRoot: root,
+    ).listen(found.add);
+    await Future<void>.delayed(const Duration(milliseconds: 200));
+    await sub.cancel();
+
+    expect(found, hasLength(1));
+    expect(found.single, isA<HistorySummarizedOnChain>());
+    expect(found.single.hash, markerHash);
+    expect(
+      (found.single as HistorySummarizedOnChain).marker.summary,
+      marker.summary,
+    );
+    expect(renderTrajectoryHistory(found), isEmpty);
+  });
+
   test('a model call the airlock ran comes back as the agent\'s reply; a '
       'refused one is skipped', () async {
     final rootResult = await rawWriter.write(

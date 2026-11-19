@@ -92,6 +92,59 @@ final class SaidByAgent extends TrajectoryEvent {
   final String text;
 }
 
+/// The loop's own record that it compacted its history: [upTo] and every
+/// event before it are covered by the summary the model gave in [summary],
+/// that summary call's outcome entry. Written as a turn on the loop's own
+/// chain, so a loop started later finds the same boundary in the record.
+final class HistorySummarized {
+  const HistorySummarized({required this.summary, required this.upTo});
+
+  static const shapeName = 'HistorySummarized';
+
+  final ObjectId summary;
+  final ObjectId upTo;
+
+  Map<String, Object?> toJson() => {
+    'shape': shapeName,
+    'summary': summary.hex,
+    'upTo': upTo.hex,
+  };
+
+  /// [node] as one, as [toJson] wrote it; null for any other node.
+  static HistorySummarized? fromJson(Map<String, Object?> node) =>
+      switch (node) {
+        {
+          'shape': shapeName,
+          'summary': final String summary,
+          'upTo': final String upTo,
+        } =>
+          switch ((ObjectId.parse(summary), ObjectId.parse(upTo))) {
+            (final summary?, final upTo?) => HistorySummarized(
+              summary: summary,
+              upTo: upTo,
+            ),
+            _ => null,
+          },
+        _ => null,
+      };
+}
+
+/// A [HistorySummarized] turn, read back off the loop's own chain.
+final class HistorySummarizedOnChain extends TrajectoryEvent {
+  const HistorySummarizedOnChain({required super.hash, required this.marker});
+
+  final HistorySummarized marker;
+}
+
+/// The summary that stands in for everything before a [HistorySummarized]
+/// boundary: built by [requestWindow], never read off the feed. [hash] is
+/// the summary call's outcome entry.
+final class SummaryOfEarlierHistory extends TrajectoryEvent {
+  const SummaryOfEarlierHistory({required super.hash, required this.text});
+
+  final String text;
+}
+
 /// An entry the loop itself wrote on its own turn chain.
 final class TurnOnChain extends TrajectoryEvent {
   const TurnOnChain({required super.hash, required this.turn});
@@ -159,7 +212,13 @@ Stream<TrajectoryEvent> followTrajectoryHistory(
       final belongs = item.previous != null && onChain.contains(item.previous);
       if (!belongs) return const [];
       onChain.add(item.id);
-      return [TurnOnChain(hash: item.id, turn: TurnEnvelope.decode(item.body))];
+      final turn = TurnEnvelope.decode(item.body);
+      final marker = HistorySummarized.fromJson(turn.node);
+      return [
+        marker == null
+            ? TurnOnChain(hash: item.id, turn: turn)
+            : HistorySummarizedOnChain(hash: item.id, marker: marker),
+      ];
     }
     if (item.kind == _eventKind) {
       rawEvents[item.id] = item;
@@ -214,14 +273,46 @@ Object? _jsonOrNull(List<int> body) {
 /// cases; since ReplyText turns are dead and no `UserSaid` ever arrives
 /// this way any more (it arrives as [SaidByUser] instead), nothing
 /// currently reaches this case — kept for whatever the loop's own chain
-/// ends up carrying. Throws [FormatException] for a
-/// [TurnOnChain] whose node shape it doesn't know how to render.
-String renderTrajectoryHistory(List<TrajectoryEvent> history) => history
-    .map(
-      (event) => switch (event) {
-        SaidByUser(:final text) => 'User: $text',
-        SaidByAgent(:final text) => 'Agent: $text',
-        TurnOnChain(:final turn) => renderRequestBody([turn]),
-      },
-    )
-    .join('\n');
+/// ends up carrying. A [HistorySummarizedOnChain] renders as nothing: it
+/// marks a boundary, and says nothing itself. Throws [FormatException] for
+/// a [TurnOnChain] whose node shape it doesn't know how to render.
+String renderTrajectoryHistory(List<TrajectoryEvent> history) => [
+  for (final event in history)
+    ?switch (event) {
+      SaidByUser(:final text) => 'User: $text',
+      SaidByAgent(:final text) => 'Agent: $text',
+      SummaryOfEarlierHistory(:final text) =>
+        'Summary of the conversation before this point: $text',
+      TurnOnChain(:final turn) => renderRequestBody([turn]),
+      HistorySummarizedOnChain() => null,
+    },
+].join('\n');
+
+/// What the model is shown of [history]: everything, until the loop has
+/// summarized it; after that, the latest summary in place of every event
+/// it covers, then the events after its boundary. The summary call's own
+/// reply and every boundary marker are left out, since neither is part of
+/// the conversation. If the latest boundary names a summary or an event
+/// [history] does not hold, the whole of [history] is shown rather than a
+/// window that silently drops what it cannot place.
+List<TrajectoryEvent> requestWindow(List<TrajectoryEvent> history) {
+  final markers = history.whereType<HistorySummarizedOnChain>();
+  final whole = [
+    for (final event in history)
+      if (event is! HistorySummarizedOnChain) event,
+  ];
+  if (markers.isEmpty) return whole;
+  final marker = markers.last.marker;
+  final summary = history
+      .whereType<SaidByAgent>()
+      .where((event) => event.hash == marker.summary)
+      .firstOrNull;
+  final upToAt = history.indexWhere((event) => event.hash == marker.upTo);
+  if (summary == null || upToAt < 0) return whole;
+  return [
+    SummaryOfEarlierHistory(hash: summary.hash, text: summary.text),
+    for (final event in history.skip(upToAt + 1))
+      if (event is! HistorySummarizedOnChain && event.hash != summary.hash)
+        event,
+  ];
+}
