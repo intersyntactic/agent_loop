@@ -21,6 +21,11 @@
 /// the airlock refuses, or one with no triggering SaidByUser in reach
 /// (shouldn't happen: a turn only starts from one), is logged, not thrown
 /// — the model's answer is already recorded either way.
+///
+/// When a reply leaves less than `--compact-margin` tokens of the model's
+/// context window, the loop asks the model for a summary straight away,
+/// while the user reads that reply, and later requests send the summary in
+/// place of what it covers (lib/src/history_compaction.dart).
 library;
 
 import 'dart:io';
@@ -28,7 +33,13 @@ import 'dart:io';
 import 'package:agent_loop/agent_loop.dart';
 import 'package:is_docking_station/is_docking_station.dart' show RelayedEvent;
 import 'package:is_effects/is_effects.dart'
-    show ModelName, ModelReply, ModelSignInName, SignIn;
+    show
+        CutOffReply,
+        FinishedReply,
+        ModelName,
+        ModelReply,
+        ModelSignInName,
+        SignIn;
 import 'package:is_airlock_api/is_airlock_api.dart'
     show
         Action,
@@ -69,7 +80,7 @@ Future<void> main(List<String> args) async {
   if (options == null) {
     stderr.writeln(
       'usage: agent_loop --record-read <socket> --record-write <socket> '
-      '--model-sign-in <name> --model <name>',
+      '--model-sign-in <name> --model <name> [--compact-margin <tokens>]',
     );
     exitCode = 64; // EX_USAGE
     return;
@@ -100,13 +111,61 @@ Future<void> main(List<String> args) async {
   final history = <TrajectoryEvent>[];
   var turn = 0;
 
+  // Asks the model to summarize the window up to [upTo], the reply that
+  // crossed the line, while the user reads it. Its outcome comes back on
+  // the feed as a [SummaryByAgent], which [requestWindow] puts in place of
+  // what it covers; a refused or cut-off one leaves the window whole.
+  Future<void> summarize(SaidByAgent upTo) async {
+    final summary = summaryRequest(history, upTo);
+    if (summary == null) return;
+    final place = ++turn;
+    await chain.append(
+      HistorySummaryAsked(place: place, upTo: upTo.hash).toJson(),
+      const Own(),
+    );
+    final requestHash = await recordModelRequestOnTrajectory(
+      chain,
+      systemPrompt: _placeholderSystemPrompt,
+      request: encodeModelInput(summary.input),
+      builtFrom: [for (final e in summary.covered) e.hash],
+    );
+    stdout.writeln(
+      'agent_loop: summarizing up to ${upTo.hash.hex}, '
+      'model-request ${requestHash.hex}',
+    );
+    final asked = Program.askTheModel.runOrRefusal<ModelReply>(
+      ModelCall(
+        signIn: options.modelSignIn,
+        model: options.model,
+        request: EntryId.parse(requestHash.hex)!,
+      ),
+      then: (ModelReply reply) => Done(reply),
+    );
+    switch (await asked.next(Crux.through(link, place: place))) {
+      case Done(value: FinishedReply()):
+        stdout.writeln('agent_loop: summarized');
+      case Done(value: CutOffReply()):
+        stderr.writeln('agent_loop: summary cut off, not used');
+      case Failed(:final why):
+        stderr.writeln('agent_loop: summary call refused: $why');
+      case Action():
+        throw StateError('runOrRefusal returned an unresolved Action');
+    }
+  }
+
+  Future<void> summarizeIfFull() async {
+    final over = replyOverTheLine(history, options.compactMargin);
+    if (over != null) await summarize(over);
+  }
+
   Future<void> answer(SaidByUser event) async {
-    final request = encodeModelInput(trajectoryInput(history));
+    final window = requestWindow(history);
+    final request = encodeModelInput(trajectoryInput(window));
     final requestHash = await recordModelRequestOnTrajectory(
       chain,
       systemPrompt: _placeholderSystemPrompt,
       request: request,
-      builtFrom: [for (final e in history) e.hash],
+      builtFrom: [for (final e in window) e.hash],
     );
     stdout.writeln('agent_loop: recorded model-request ${requestHash.hex}');
 
@@ -227,15 +286,33 @@ Future<void> main(List<String> args) async {
           'agent_loop: caught up at place $turn, '
           '${owed == null ? 'nothing owed' : 'answering ${owed.hash.hex}'}',
         );
-        if (owed != null) await answer(owed);
+        if (owed != null) {
+          await answer(owed);
+        } else {
+          await summarizeIfFull();
+        }
       case TrajectoryEvent event:
         history.add(event);
-        if (caughtUp && event is SaidByUser && event.startsTurn) {
-          await answer(event);
+        if (!caughtUp) continue;
+        switch (event) {
+          case SaidByUser(startsTurn: true):
+            await answer(event);
+          case SaidByAgent():
+            await summarizeIfFull();
+          case SaidByUser() ||
+              SummaryByAgent() ||
+              ActionProposed() ||
+              SummaryAsked() ||
+              TurnOnChain():
+            break;
         }
     }
   }
 }
+
+/// The context, in tokens, a reply may leave before the loop summarizes:
+/// room for the summary call's own reply, the next message and its answer.
+const _defaultCompactMargin = 40000;
 
 final class _Options {
   const _Options({
@@ -243,20 +320,25 @@ final class _Options {
     required this.recordWrite,
     required this.modelSignIn,
     required this.model,
+    required this.compactMargin,
   });
 
   final String recordRead;
   final String recordWrite;
   final ModelSignInName modelSignIn;
   final ModelName model;
+  final int compactMargin;
 
   static _Options? parse(List<String> args) {
     String? recordRead;
     String? recordWrite;
     ModelSignInName? modelSignIn;
     ModelName? model;
+    int? compactMargin = _defaultCompactMargin;
     for (var i = 0; i < args.length; i++) {
       switch (args[i]) {
+        case '--compact-margin' when i + 1 < args.length:
+          compactMargin = int.tryParse(args[++i]);
         case '--record-read' when i + 1 < args.length:
           recordRead = args[++i];
         case '--record-write' when i + 1 < args.length:
@@ -272,12 +354,15 @@ final class _Options {
     return recordRead != null &&
             recordWrite != null &&
             modelSignIn != null &&
-            model != null
+            model != null &&
+            compactMargin != null &&
+            compactMargin >= 0
         ? _Options(
             recordRead: recordRead,
             recordWrite: recordWrite,
             modelSignIn: modelSignIn,
             model: model,
+            compactMargin: compactMargin,
           )
         : null;
   }
