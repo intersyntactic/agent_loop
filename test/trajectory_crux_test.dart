@@ -1,15 +1,14 @@
 // Proves TrajectoryCrux against a real LogbookService for the write side
-// (the action-proposed-by-agent-loop entry it writes), and a fake
-// `returned` stream matching by the logbook's own entry id, the way the
-// airlock actually names a proposal — not a hash of the proposal's raw
-// bytes alone, which carries no trace of where it landed on the chain
-// and so would never match.
+// (the action-proposed-by-agent-loop entry it writes, named by the id the
+// logbook gave it), and a fake `returned` stream for the read side,
+// matched by that id, never a hash of the proposal's body alone.
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:agent_loop/agent_loop.dart';
+import 'package:is_airlock_api/is_airlock_api.dart' show PlaceInTrajectory;
 import 'package:is_logbook/is_logbook.dart';
 import 'package:is_logbook/service.dart';
 import 'package:is_logbook_client/is_logbook_client.dart'
@@ -18,9 +17,20 @@ import 'package:is_logbook_client/is_logbook_client.dart' as client;
 import 'package:is_shapes/is_shapes.dart' show EntryId;
 import 'package:test/test.dart';
 
+String _proposal(int turn, int step) => jsonEncode({
+  'place': [turn, step],
+  'program': 'model',
+  'input': {
+    'signIn': 'anthropic-api',
+    'model': 'claude-opus-5-5',
+    'request': 'ab' * 32,
+  },
+});
+
 void main() {
   late Directory tmp;
   late LogbookService service;
+  late client.ObjectId root;
   final turnKind = Kind.parse('turn')!;
   final proposedKind = Kind.parse('action-proposed-by-agent-loop')!;
 
@@ -36,6 +46,9 @@ void main() {
       File('${tmp.path}/logbook.sock'),
       readSocket: File('${tmp.path}/logbook.read.sock'),
     );
+    final written = await client.LogbookWriter('${tmp.path}/logbook.sock')
+        .write(turnKind, utf8.encode('root'));
+    root = (written as client.Written).entry;
   });
 
   tearDown(() async {
@@ -43,70 +56,72 @@ void main() {
     tmp.deleteSync(recursive: true);
   });
 
-  test(
-    'writes the proposal, then returns the outcome of the matching '
-    'returned entry, by the id the logbook assigned the written entry',
-    () async {
-      final root = await client.LogbookWriter('${tmp.path}/logbook.sock')
-          .write(turnKind, utf8.encode('root'));
-      final rootHash = (root as client.Written).entry;
-
-      final chain = TrajectoryChain(
-        writer: LogbookWriter('${tmp.path}/logbook.sock'),
-        kind: turnKind,
-        tip: rootHash,
-      );
-
-      final returnedController = StreamController<ReturnedResult>();
-      final crux = TrajectoryCrux(
-        chain: chain,
-        returned: returnedController.stream,
-      );
-
-      final proposal = {'place': 1, 'program': 'model', 'input': 'x'};
-      final writtenBytes = utf8.encode(jsonEncode(proposal));
-
-      // A returned entry for a DIFFERENT proposal, which must be ignored,
-      // then the matching one.
-      final wrongId = EntryId.of(utf8.encode(jsonEncode({'other': true})));
-      final wrongResultEntry = EntryId.of(utf8.encode('wrong-result-entry'));
-      returnedController.add((
-        proposed: wrongId,
-        resultEntry: wrongResultEntry,
-        result: {'kind': 'refused', 'why': 'not this one'},
-      ));
-
-      // Started before propose, so it can't miss the entry; awaited after,
-      // so it names the fake result by the id the logbook actually assigns
-      // the written entry, not a hash of its body.
-      final writtenEntryFuture = LogbookReader('${tmp.path}/logbook.read.sock')
-          .subscribe(kinds: {proposedKind})
-          .firstWhere((item) => item is Entry);
-
-      final outcomeFuture = crux.propose(proposal);
-
-      final writtenEntry = await writtenEntryFuture as Entry;
-      final id = EntryId.parse(writtenEntry.id.hex)!;
-      final resultEntry = EntryId.of(utf8.encode('the-matching-result-entry'));
-      returnedController.add((
-        proposed: id,
-        resultEntry: resultEntry,
-        result: {'kind': 'ran', 'output': 'ok'},
-      ));
-
-      final outcome = await outcomeFuture;
-      expect(outcome, {'kind': 'ran', 'output': 'ok'});
-
-      // The result entry's own id is reachable by the proposal's place, not
-      // by the wrong proposal's, and only once.
-      expect(crux.resultEntryAt(1), resultEntry);
-      expect(crux.resultEntryAt(1), isNull);
-
-      // The proposed entry really landed on the chain, after root.
-      expect(writtenEntry.previous, rootHash);
-      expect(writtenEntry.body, writtenBytes);
-
-      await returnedController.close();
-    },
+  TrajectoryChain chainFromRoot() => TrajectoryChain(
+    writer: LogbookWriter('${tmp.path}/logbook.sock'),
+    kind: turnKind,
+    tip: root,
   );
+
+  test('writes the proposal on the chain and gives the id the logbook gave '
+      'it; hands back the body of the outcome naming that id', () async {
+    final returned = StreamController<ReturnedResult>();
+    final crux = TrajectoryCrux(
+      chain: chainFromRoot(),
+      returned: returned.stream,
+    );
+
+    final writtenEntry = LogbookReader('${tmp.path}/logbook.read.sock')
+        .subscribe(kinds: {proposedKind})
+        .firstWhere((item) => item is Entry);
+    final body = _proposal(1, 0);
+    final id = await crux.writeProposal(body);
+    final entry = await writtenEntry as Entry;
+
+    expect(id, EntryId.parse(entry.id.hex));
+    expect(entry.previous, root);
+    expect(utf8.decode(entry.body), body);
+
+    final outcome = crux.outcomeNaming(id);
+    // A result for some other proposal is passed over.
+    returned.add((
+      proposed: EntryId.of(utf8.encode('another proposal')),
+      resultEntry: EntryId.of(utf8.encode('wrong-result-entry')),
+      body: 'not this one',
+    ));
+    final resultEntry = EntryId.of(utf8.encode('the-matching-result-entry'));
+    returned.add((proposed: id, resultEntry: resultEntry, body: 'this one'));
+
+    expect(await outcome, 'this one');
+    // Its result entry is reachable by the proposal's place, once.
+    expect(crux.resultEntryAt(PlaceInTrajectory.at(1, 0)), resultEntry);
+    expect(crux.resultEntryAt(PlaceInTrajectory.at(1, 0)), isNull);
+
+    await crux.close();
+    await returned.close();
+  });
+
+  test('an outcome that arrives before it is asked for is kept', () async {
+    final returned = StreamController<ReturnedResult>.broadcast();
+    final crux = TrajectoryCrux(
+      chain: chainFromRoot(),
+      returned: returned.stream,
+    );
+
+    final id = await crux.writeProposal(_proposal(2, 1));
+    returned.add((
+      proposed: id,
+      resultEntry: EntryId.of(utf8.encode('early-result-entry')),
+      body: 'early',
+    ));
+    await Future<void>.delayed(Duration.zero);
+
+    expect(await crux.outcomeNaming(id), 'early');
+    expect(
+      crux.resultEntryAt(PlaceInTrajectory.at(2, 1)),
+      EntryId.of(utf8.encode('early-result-entry')),
+    );
+
+    await crux.close();
+    await returned.close();
+  });
 }

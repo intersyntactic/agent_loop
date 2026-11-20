@@ -4,6 +4,7 @@
 import 'dart:typed_data';
 
 import 'package:agent_loop/agent_loop.dart';
+import 'package:is_airlock_api/is_airlock_api.dart' show PlaceInTrajectory;
 import 'package:is_docking_station/is_docking_station.dart'
     show AddressInExternalSystem;
 import 'package:is_effects/is_effects.dart' show FinishedReply;
@@ -22,8 +23,16 @@ SaidByUser _user(String seed, {bool startsTurn = true}) => SaidByUser(
   rawEvent: null,
 );
 
-ActionProposed _proposed(String seed, int place, {bool model = true}) =>
-    ActionProposed(hash: _id(seed), place: place, asksTheModel: model);
+ActionProposed _proposed(
+  String seed,
+  int turn, {
+  int step = 0,
+  bool model = true,
+}) => ActionProposed(
+  hash: _id(seed),
+  place: PlaceInTrajectory.at(turn, step),
+  asksTheModel: model,
+);
 
 SaidByAgent _agent(String seed) => SaidByAgent(
   hash: _id(seed),
@@ -36,7 +45,7 @@ void main() {
       _user('u1'),
       _proposed('p1', 1),
       _agent('a1'),
-      _proposed('p2', 2, model: false), // the Teams post
+      _proposed('p2', 1, step: 1, model: false), // the Teams post
     ];
 
     expect(unansweredTurn(history), isNull);
@@ -80,17 +89,19 @@ void main() {
     );
   });
 
-  test('places resume after the highest one used; none used is 0', () {
-    expect(lastPlace([]), 0);
-    expect(
-      lastPlace([_proposed('p1', 1), _proposed('p3', 3), _proposed('p2', 2)]),
-      3,
-    );
+  test('the latest place is by turn, then step; none used is null', () {
+    expect(lastPlace([]), isNull);
     expect(
       lastPlace([
-        ActionProposed(hash: _id('x'), place: null, asksTheModel: true),
+        _proposed('p1', 1),
+        _proposed('p3', 3),
+        _proposed('p2', 2, step: 5),
       ]),
-      0,
+      PlaceInTrajectory.at(3, 0),
+    );
+    expect(
+      lastPlace([_proposed('p1', 2), _proposed('p2', 2, step: 1)]),
+      PlaceInTrajectory.at(2, 1),
     );
   });
 }
