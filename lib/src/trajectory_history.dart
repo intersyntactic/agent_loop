@@ -363,6 +363,15 @@ SaidByUser? unansweredTurn(List<TrajectoryEvent> history) {
   return null;
 }
 
+/// Whether a loop started on [history] still owes its trajectory the open
+/// notice: the trajectory started under rules that read, and this loop has
+/// proposed nothing on it. The notice is the trajectory's first proposal, so
+/// one with any proposal already had it, and a restarted loop never sends a
+/// second, nor a late one into a conversation already under way.
+bool owesOpenNotice(List<TrajectoryEvent> history) =>
+    history.any((event) => event is TrajectoryStarted) &&
+    !history.any((event) => event is ActionProposed);
+
 /// The latest entry this loop wrote on its own chain that [history] holds:
 /// a proposal or a turn. A restarted loop's chain resumes after it.
 ObjectId? lastOwnEntry(List<TrajectoryEvent> history) => [
