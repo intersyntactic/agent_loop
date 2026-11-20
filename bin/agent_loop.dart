@@ -15,6 +15,10 @@
 /// place is `[turn, step]`. A restarted loop's next turn follows the latest
 /// place in its history.
 ///
+/// A trajectory's first proposal is its open notice ([TrajectoryOpened]),
+/// in a turn of its own, before its first answer; a trajectory with any
+/// proposal already is never sent one ([owesOpenNotice]).
+///
 /// Once it has the model's reply, answers the message with it by reference
 /// only ([ReplyToEvent]: the admission and the reply's outcome entry). Where
 /// the answer goes, as whom and in what shape are the airlock's and its
@@ -37,7 +41,8 @@ import 'package:is_airlock_api/is_airlock_api.dart'
         PlaceInTrajectory,
         Program,
         ReplyToEvent,
-        Result;
+        Result,
+        TrajectoryOpened;
 import 'package:is_logbook/service.dart' show Kind;
 import 'package:is_logbook_client/is_logbook_client.dart'
     show LogbookReader, ObjectId;
@@ -90,6 +95,26 @@ Future<void> main(List<String> args) async {
 
   final history = <TrajectoryEvent>[];
   var nextTurn = 0;
+
+  // The open notice takes a turn of its own, so a fresh trajectory opens at
+  // [0, 0] and its first answer is turn 1. A refusal is logged, not
+  // retried: the proposal is in the history either way.
+  Future<void> openTrajectory() async {
+    final turn = nextTurn++;
+    final opened = Program.answerEvent.runOrRefusal<int>(
+      const TrajectoryOpened(),
+      then: (responses) => Done(responses.length),
+    );
+    stdout.writeln('agent_loop: proposing the open notice at turn $turn');
+    switch (await opened.next(Crux.through(link, turn: turn))) {
+      case Done(:final value):
+        stdout.writeln('agent_loop: opened, in $value part(s)');
+      case Failed(:final why):
+        stderr.writeln('agent_loop: open notice refused: $why');
+      case Action():
+        throw StateError('runOrRefusal returned an unresolved Action');
+    }
+  }
 
   Future<void> answer(SaidByUser event) async {
     final starting = startingModel(history);
@@ -189,12 +214,15 @@ Future<void> main(List<String> args) async {
           'agent_loop: caught up at place ${last ?? 'none'}, '
           '${owed == null ? 'nothing owed' : 'answering ${owed.hash.hex}'}',
         );
+        if (owesOpenNotice(history)) await openTrajectory();
         if (owed != null) await answer(owed);
       case TrajectoryEvent event:
         history.add(event);
-        if (caughtUp && event is SaidByUser && event.startsTurn) {
-          await answer(event);
+        if (!caughtUp) continue;
+        if (event is TrajectoryStarted && owesOpenNotice(history)) {
+          await openTrajectory();
         }
+        if (event is SaidByUser && event.startsTurn) await answer(event);
     }
   }
 }

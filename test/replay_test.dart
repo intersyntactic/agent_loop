@@ -7,7 +7,10 @@ import 'package:agent_loop/agent_loop.dart';
 import 'package:is_airlock_api/is_airlock_api.dart' show PlaceInTrajectory;
 import 'package:is_docking_station/is_docking_station.dart'
     show AddressInExternalSystem;
-import 'package:is_effects/is_effects.dart' show FinishedReply;
+import 'package:is_effects/is_effects.dart'
+    show FinishedReply, ModelAndSignIn, ModelName, ModelSignInName;
+import 'package:is_flight_rules/is_flight_rules.dart'
+    show FlightRules, ProgramsNetwork, WhatMayLeaveThisMachine;
 import 'package:is_logbook_client/is_logbook_client.dart' show ObjectId;
 import 'package:is_shapes/is_shapes.dart' show ActorId;
 import 'package:test/test.dart';
@@ -33,6 +36,24 @@ ActionProposed _proposed(
   place: PlaceInTrajectory.at(turn, step),
   asksTheModel: model,
 );
+
+TrajectoryStarted _started(String seed) {
+  final signIn = ModelSignInName.parse('nick-claude-team')!;
+  return TrajectoryStarted(
+    hash: _id(seed),
+    rules: FlightRules.of(
+      whatMayLeaveThisMachine: WhatMayLeaveThisMachine(
+        modelSignInsCallsMayGoOutAs: [signIn],
+        sitesTheWebDriverMayReach: const [],
+        programsNetwork: ProgramsNetwork.values.first,
+      ),
+      startingModel: ModelAndSignIn(
+        signIn: signIn,
+        model: ModelName.parse('claude-opus-5-5')!,
+      ),
+    )!,
+  );
+}
 
 SaidByAgent _agent(String seed) => SaidByAgent(
   hash: _id(seed),
@@ -86,6 +107,34 @@ void main() {
     expect(
       unansweredTurn([_user('u1'), _proposed('p1', 1, model: false)])?.hash,
       _id('u1'),
+    );
+  });
+
+  test('a trajectory started under rules, with nothing proposed, owes its '
+      'open notice', () {
+    expect(owesOpenNotice([_started('s'), _user('u1')]), isTrue);
+  });
+
+  test('any proposal means the open notice is not owed: never a second, '
+      'never a late one', () {
+    expect(
+      owesOpenNotice([_started('s'), _proposed('p0', 0, model: false)]),
+      isFalse,
+    );
+    expect(
+      owesOpenNotice([_started('s'), _user('u1'), _proposed('p1', 0)]),
+      isFalse,
+    );
+  });
+
+  test('no open notice without rules that read', () {
+    expect(owesOpenNotice([_user('u1')]), isFalse);
+    expect(
+      owesOpenNotice([
+        TrajectoryRulesUnreadable(hash: _id('s'), why: 'test'),
+        _user('u1'),
+      ]),
+      isFalse,
     );
   });
 
