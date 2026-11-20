@@ -90,8 +90,8 @@ final class SaidByUser extends TrajectoryEvent {
   final String text;
   final bool startsTurn;
 
-  /// Where this was said, such as `teams:19:abc@thread.v2`: a reply to this
-  /// turn goes back here.
+  /// Where this was said, in the external system it came from: a reply to
+  /// this turn goes back here.
   final AddressInExternalSystem address;
 
   /// The relay's own `event` entry this admission decided (its `event`
@@ -101,9 +101,7 @@ final class SaidByUser extends TrajectoryEvent {
   /// only if it somehow did not arrive first, which the
   /// feed's own contract says cannot happen. Pass its `id` and `body` to
   /// docking_station's `RelayedEvent.read` for whatever a module needs that
-  /// an admission's reading doesn't carry — for Teams, the activity's
-  /// `serviceUrl`, which a reply needs and which has no fixed value across
-  /// tenants.
+  /// an admission's reading doesn't carry.
   final Entry? rawEvent;
 }
 

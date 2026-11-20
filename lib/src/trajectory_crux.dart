@@ -73,9 +73,9 @@ final class TrajectoryCrux implements ProposesActionsThroughTheRecord {
   final _placeOf = <EntryId, PlaceInTrajectory>{};
 
   /// The matching result entry's own id, by the place each proposal named:
-  /// a later proposal naming a Teams reply's `WebRequest.drawnFrom` has no
-  /// other way to reach it. Removed once read, since each place proposes
-  /// once.
+  /// a later proposal answering with the model's reply (`ReplyToEvent.reply`)
+  /// has no other way to reach it. Removed once read, since each place
+  /// proposes once.
   final _resultEntries = <PlaceInTrajectory, EntryId>{};
 
   /// [place]'s result entry, once its outcome has been handed back; null

@@ -45,7 +45,7 @@ void main() {
       _user('u1'),
       _proposed('p1', 1),
       _agent('a1'),
-      _proposed('p2', 1, step: 1, model: false), // the Teams post
+      _proposed('p2', 1, step: 1, model: false), // the answer
     ];
 
     expect(unansweredTurn(history), isNull);

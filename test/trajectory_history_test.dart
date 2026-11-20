@@ -116,6 +116,7 @@ void main() {
         addressInExternalSystem: AddressInExternalSystem.parse('teams:c1')!,
         containingAddress: null,
         key: EventKey.parse('k1')!,
+        addressedTo: ActorId.parse('teams:cam')!,
         node: UserSaid(
           author: ActorId.parse('teams:u1')!,
           source: SourceMessageId.parse('m1')!,
@@ -214,6 +215,7 @@ void main() {
               )!,
               containingAddress: null,
               key: EventKey.parse('k$i')!,
+              addressedTo: null,
               node: UserSaid(
                 author: ActorId.parse('teams:u1')!,
                 source: SourceMessageId.parse('m$i')!,
