@@ -202,7 +202,90 @@ void main() {
     expect(found[1], lastOfFirstRun);
   });
 
-  test('a resumed chain adopts the service\'s tip only once', () async {
+  test('a restarted loop whose first entry repeats an earlier one exactly '
+      'still appends after its own last entry', () async {
+    // The live case: the system prompt piece is the same bytes after the
+    // same root on every turn's first request, so the logbook already holds
+    // it and says so before it checks the tip.
+    final root = await assign(
+      trajectory: trajectoryUnderTest,
+      mission: client.ObjectId.of(Uint8List.fromList('mission-f'.codeUnits))
+          .hex,
+      loopUser: uid,
+      suit: '1002',
+    );
+    final writer = LogbookWriter('${tmp.path}/logbook.sock');
+    const systemPrompt = {'shape': 'Note', 'text': 'the system prompt'};
+
+    final firstRun = TrajectoryChain(writer: writer, kind: turnKind, tip: root);
+    await firstRun.append(systemPrompt, const Own());
+    await firstRun.append({'shape': 'Note', 'text': 'request 1'}, const Own());
+    final proposal = await firstRun.append({
+      'shape': 'Note',
+      'text': 'proposal 1',
+    }, const Own());
+
+    final restarted = TrajectoryChain.resumed(
+      writer: writer,
+      kind: turnKind,
+      root: root,
+    );
+    await restarted.append(systemPrompt, const Own());
+    final request2 = await restarted.append({
+      'shape': 'Note',
+      'text': 'request 2',
+    }, const Own());
+
+    final found = <client.ObjectId>[];
+    final sub = followTrajectory(
+      reader,
+      kind: turnKind,
+      chainRoot: root,
+    ).listen((e) => found.add(e.$1));
+    await Future<void>.delayed(const Duration(milliseconds: 200));
+    await sub.cancel();
+
+    expect(found.last, request2);
+    expect(found[found.length - 2], proposal);
+  });
+
+  test(
+    'a restarted loop told its last entry appends straight after it',
+    () async {
+      final root = await assign(
+        trajectory: trajectoryUnderTest,
+        mission: client.ObjectId.of(Uint8List.fromList('mission-g'.codeUnits))
+            .hex,
+        loopUser: uid,
+        suit: '1002',
+      );
+      final writer = LogbookWriter('${tmp.path}/logbook.sock');
+      final firstRun = TrajectoryChain(
+        writer: writer,
+        kind: turnKind,
+        tip: root,
+      );
+      final last = await firstRun.append({
+        'shape': 'Note',
+        'text': 'turn 1',
+      }, const Own());
+
+      final restarted = TrajectoryChain.resumed(
+        writer: writer,
+        kind: turnKind,
+        root: root,
+      )..resumeAfter(last);
+      expect(restarted.tip, last);
+      await restarted.append({'shape': 'Note', 'text': 'turn 2'}, const Own());
+
+      // Once confirmed, a later hint changes nothing.
+      restarted.resumeAfter(root);
+      expect(restarted.tip, isNot(root));
+    },
+  );
+
+  test('a resumed chain follows the service\'s tip only until an append is '
+      'newly added', () async {
     final root = await assign(
       trajectory: trajectoryUnderTest,
       mission: client.ObjectId.of(Uint8List.fromList('mission-e'.codeUnits))

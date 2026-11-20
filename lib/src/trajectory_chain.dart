@@ -23,10 +23,13 @@ final class TrajectoryChain {
     : _tipUnconfirmed = false;
 
   /// A chain this loop may already have written to in an earlier run,
-  /// starting from [root]: its first append follows whatever tip the
-  /// service names, once, since only this loop's user writes this chain and
-  /// so that tip is this loop's own last entry. Every append after that must
-  /// follow the tip this chain tracks itself.
+  /// starting from [root] until [resumeAfter] names a later entry. Until an
+  /// append is newly added, the chain follows whatever tip the service
+  /// names: only this loop's user writes this chain, so that tip is this
+  /// loop's own last entry. An entry the service already held confirms
+  /// nothing, since an earlier run may have written the same bytes after
+  /// the same entry anywhere back along the chain. Once one append is newly
+  /// added, every later one must follow the tip this chain tracks itself.
   TrajectoryChain.resumed({
     required this.writer,
     required this.kind,
@@ -49,6 +52,14 @@ final class TrajectoryChain {
   /// `users-assigned-to-trajectory` entry [findTrajectoryRoot] returns).
   ObjectId? get tip => _tip;
 
+  /// Before a resumed chain's first append is added: [lastSeen] is the
+  /// latest of this loop's own entries it has read back, so its first
+  /// append follows that rather than the root. Ignored once the tip is
+  /// confirmed.
+  void resumeAfter(ObjectId lastSeen) {
+    if (_tipUnconfirmed) _tip = lastSeen;
+  }
+
   /// Appends [node] after the current tip, in an envelope naming
   /// [provenance], and returns the new tip.
   Future<ObjectId> append(
@@ -70,19 +81,20 @@ final class TrajectoryChain {
   }
 
   Future<ObjectId> _appendEntryOne(Kind entryKind, List<int> bytes) async {
-    final ObjectId entry;
+    final ({ObjectId entry, bool alreadyRecorded}) written;
     try {
-      entry = await writer.append(entryKind, _tip, bytes);
+      written = await writer.appendOrFind(entryKind, _tip, bytes);
     } on LogbookWriteRefused catch (e) {
       final serviceTip = e.tip;
-      if (!_tipUnconfirmed || serviceTip == null) rethrow;
-      _tipUnconfirmed = false;
+      if (!_tipUnconfirmed || serviceTip == null || serviceTip == _tip) {
+        rethrow;
+      }
       _tip = serviceTip;
       return _appendEntryOne(entryKind, bytes);
     }
-    _tipUnconfirmed = false;
-    _tip = entry;
-    return entry;
+    if (!written.alreadyRecorded) _tipUnconfirmed = false;
+    _tip = written.entry;
+    return written.entry;
   }
 }
 
