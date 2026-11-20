@@ -308,6 +308,13 @@ SaidByUser? unansweredTurn(List<TrajectoryEvent> history) {
   return null;
 }
 
+/// The latest entry this loop wrote on its own chain that [history] holds:
+/// a proposal or a turn. A restarted loop's chain resumes after it.
+ObjectId? lastOwnEntry(List<TrajectoryEvent> history) => [
+  for (final event in history)
+    if (event is ActionProposed || event is TurnOnChain) event.hash,
+].lastOrNull;
+
 /// The highest place this loop has proposed at in [history], or 0 for
 /// none: a restarted loop's next proposal goes after it, never reusing a
 /// place.

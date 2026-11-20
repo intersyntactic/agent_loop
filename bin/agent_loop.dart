@@ -225,6 +225,9 @@ Future<void> main(List<String> args) async {
       case CaughtUpWithTrajectory():
         if (caughtUp) continue;
         caughtUp = true;
+        if (lastOwnEntry(history) case final lastOwn?) {
+          chain.resumeAfter(lastOwn);
+        }
         turn = lastPlace(history);
         final owed = unansweredTurn(history);
         stdout.writeln(

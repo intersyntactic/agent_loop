@@ -59,11 +59,28 @@ final class LogbookWriter {
   /// closed before answering, or the write failed partway — where
   /// resending the same bytes is safe (0.2.0's own guarantee: the same
   /// bytes are always the same entry).
-  Future<ObjectId> append(Kind kind, ObjectId? previous, List<int> rest) async {
+  Future<ObjectId> append(
+    Kind kind,
+    ObjectId? previous,
+    List<int> rest,
+  ) async => (await appendOrFind(kind, previous, rest)).entry;
+
+  /// As [append], and whether the service already held exactly this entry
+  /// ([alreadyRecorded]) rather than adding it now. An entry already held
+  /// may sit anywhere on its chain, so it says nothing about the chain's
+  /// tip.
+  Future<({ObjectId entry, bool alreadyRecorded})> appendOrFind(
+    Kind kind,
+    ObjectId? previous,
+    List<int> rest,
+  ) async {
     final result = await _client.write(kind, rest, previous: previous);
     return switch (result) {
-      client.Written(:final entry) => entry,
-      client.AlreadyRecorded(:final entry) => entry,
+      client.Written(:final entry) => (entry: entry, alreadyRecorded: false),
+      client.AlreadyRecorded(:final entry) => (
+        entry: entry,
+        alreadyRecorded: true,
+      ),
       client.NotTip(:final tip) => throw LogbookWriteRefused(
         'not the tip, which is ${tip.hex}',
         tip: tip,
