@@ -27,6 +27,7 @@ library;
 export 'src/logbook_writer.dart';
 export 'src/model_request_input.dart';
 export 'src/reply_chunk_chain.dart';
+export 'src/tool_call_text.dart';
 export 'src/trajectory_chain.dart';
 export 'src/trajectory_crux.dart';
 export 'src/trajectory_history.dart';
