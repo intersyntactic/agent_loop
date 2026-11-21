@@ -118,7 +118,8 @@ cross-driver read: airlock-api-b3 with the drivers.
 
 A turn's final plain text **is** the reply (Nick, 21 Nov 23:29). The loop
 hands it to the conversation's reply tool, so the model calls tools only to
-act, never to speak, and a turn always reaches the person. The model never
+act, never to speak, and a turn always reaches the person. Final text that
+is empty or only whitespace sends nothing. The model never
 supplies the address: the reply tool's destination comes from the
 trajectory's start entry, and the airlock's path-prefix rule for the starting
 conversation is the boundary. If the reply itself is refused, the turn ends
