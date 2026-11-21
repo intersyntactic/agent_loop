@@ -114,6 +114,17 @@ already-bounded passage. A stranger's document is parsed only in a confined
 driver, never in the core, and never copied into the record. Owner of the
 cross-driver read: airlock-api-b3 with the drivers.
 
+## Replying
+
+A turn's final plain text **is** the reply (Nick, 21 Nov 23:29). The loop
+hands it to the conversation's reply tool, so the model calls tools only to
+act, never to speak, and a turn always reaches the person. The model never
+supplies the address: the reply tool's destination comes from the
+trajectory's start entry, and the airlock's path-prefix rule for the starting
+conversation is the boundary. If the reply itself is refused, the turn ends
+under the per-turn cap on tool calls and repeated refusals; the record shows
+why.
+
 ## Replay
 
 A restarted loop re-evaluates a call's recorded body with its recorded
