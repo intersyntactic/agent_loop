@@ -20,7 +20,7 @@ import 'package:is_airlock_api/is_airlock_api.dart'
         PlaceInTrajectory,
         outcomeOfProposedActionKind,
         readOutcomeOfProposedAction;
-import 'package:is_docking_station/is_docking_station.dart'
+import 'package:is_admission_vocabulary/is_admission_vocabulary.dart'
     show
         AddressInExternalSystem,
         DecisionEntryKind,

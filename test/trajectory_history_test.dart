@@ -1,6 +1,6 @@
 // Proves followTrajectoryHistory and trajectoryInput against a
 // real LogbookService: a docking-station-shaped event-admitted-to-mission
-// entry (built with is_docking_station's own encodeDecision, not
+// entry (built with is_admission_vocabulary's own encodeDecision, not
 // hand-written JSON) interleaves correctly with the loop's own turns, in
 // logbook order, and becomes one input item per event.
 import 'dart:async';
@@ -34,7 +34,7 @@ import 'package:is_effects/is_effects.dart'
 import 'package:is_conversation_shapes/is_conversation_shapes.dart'
     show SourceMessageId, UserSaid;
 import 'package:checked_json/checked_json.dart' show JsonObject;
-import 'package:is_docking_station/is_docking_station.dart';
+import 'package:is_admission_vocabulary/is_admission_vocabulary.dart';
 import 'package:is_flight_rules/is_flight_rules.dart'
     show FlightRules, ProgramsNetwork, WhatMayLeaveThisMachine;
 import 'package:is_logbook/is_logbook.dart';
