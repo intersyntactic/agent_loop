@@ -24,3 +24,9 @@ dependencies:
 dev_dependencies:
   lints: ^6.1.0
   test: ^1.33.0
+
+# is_airlock_api 0.14.0 is unreleased: built against the local checkout
+# until it is published, then this goes and the range moves to ^0.14.0.
+dependency_overrides:
+  is_airlock_api:
+    path: ../airlock_api

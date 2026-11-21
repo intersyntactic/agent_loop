@@ -22,9 +22,10 @@
 /// Once it has the model's reply, answers the message with it by reference
 /// only ([ReplyToEvent]: the admission and the reply's outcome entry). Where
 /// the answer goes, as whom and in what shape are the airlock's and its
-/// module's to work out, so the loop knows no external system. An answer
-/// the airlock refuses is logged, not thrown — the model's reply is already
-/// recorded either way.
+/// module's to work out, so the loop knows no external system. When the
+/// model call or the answer is refused, the message is answered instead
+/// with a [RefusalNoticeToEvent] naming the refused outcome, so its sender
+/// decides what to do; a refused notice or open notice is only logged.
 library;
 
 import 'dart:io';
@@ -41,6 +42,7 @@ import 'package:is_airlock_api/is_airlock_api.dart'
         PlaceInTrajectory,
         Program,
         ReplyToEvent,
+        RefusalNoticeToEvent,
         Result,
         TrajectoryOpened;
 import 'package:is_logbook/service.dart' show Kind;
@@ -116,6 +118,41 @@ Future<void> main(List<String> args) async {
     }
   }
 
+  // Tells whoever sent [event] that the action at [failed] was refused, and
+  // why, at the turn's next step, so they decide what to do. The airlock
+  // sends only the reason it recorded. A refused notice is only logged.
+  Future<void> noticeRefusal(
+    SaidByUser event,
+    Crux crux,
+    PlaceInTrajectory failed,
+  ) async {
+    final refusal = link.resultEntryAt(failed);
+    if (refusal == null) {
+      stderr.writeln(
+        'agent_loop: no result entry recorded at $failed, no refusal notice',
+      );
+      return;
+    }
+    final noticed = Program.answerEvent.runOrRefusal<int>(
+      RefusalNoticeToEvent(
+        respondsTo: EntryId.parse(event.hash.hex)!,
+        refusal: refusal,
+      ),
+      then: (responses) => Done(responses.length),
+    );
+    stdout.writeln(
+      'agent_loop: proposing the refusal notice for ${refusal.hex}',
+    );
+    switch (await noticed.next(crux)) {
+      case Done(:final value):
+        stdout.writeln('agent_loop: refusal noticed, in $value part(s)');
+      case Failed(:final why):
+        stderr.writeln('agent_loop: refusal notice refused: $why');
+      case Action():
+        throw StateError('runOrRefusal returned an unresolved Action');
+    }
+  }
+
   Future<void> answer(SaidByUser event) async {
     final starting = startingModel(history);
     final model = starting.model;
@@ -176,6 +213,7 @@ Future<void> main(List<String> args) async {
               stdout.writeln('agent_loop: answered, in $value part(s)');
             case Failed(:final why):
               stderr.writeln('agent_loop: answer refused: $why');
+              await noticeRefusal(event, crux, PlaceInTrajectory.at(turn, 1));
             case Action():
               throw StateError('runOrRefusal returned an unresolved Action');
           }
@@ -184,6 +222,7 @@ Future<void> main(List<String> args) async {
         }
       case Failed(:final why):
         stdout.writeln('agent_loop: model call refused: $why');
+        await noticeRefusal(event, crux, PlaceInTrajectory.at(turn, 0));
       case Action():
         // runOrRefusal's own then never returns one: it is called only
         // with the output, never asked to propose a further action.
