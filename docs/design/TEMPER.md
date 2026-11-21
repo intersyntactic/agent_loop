@@ -54,3 +54,52 @@
 ## Disposition
 
 RECAST. Fold 1–7, 9, 11, 12 and 13 into `tool-bodies-as-data.md`. Put 8 to Nick. Record 10 as a tradeoff. Re-strike after the fold (round 2 of at most 3).
+
+---
+
+# Round 2: Dart, transpiler, closed term language
+
+**Overall verdict:** RECAST (4 of 4 families)
+**Struck:** dt-1795260122, 21 Nov 2026, the recast design plus round 1's TEMPER.md; families seated: Maxwell + Noether, Carnot, Tesla.
+
+| Family | Verdict | One line |
+|---|---|---|
+| Maxwell (Claude) | RECAST | "Halt" is undefined, and stage 1's "fixed sequence the loop runs" is the code-in-the-loop the design removes. |
+| Noether (DeepSeek) | RECAST | The cost bound, the proposal's identity and the transpiler's "outside the boundary" each break. |
+| Carnot (GPT) | RECAST | The closed evaluator is a real improvement; resource bounds, occurrence identity and the transpiler's authority remain unproved. |
+| Tesla (Grok) | RECAST | Three tones (the Dart read, the terms run, the proposal heard). A licensed-wrong transpiler plus pinning replays the wrong send forever. |
+
+Closed by round 2 (all families agree): escape is inexpressible in the terms; a refusal is not a value; the grant is named honestly; tool names are immutable; one call per reply; terms recorded, not Dart.
+
+## Fatal flaws (deduped, most severe first)
+
+1. **"Wrong, never unsafe" is false.** Every effect is a `propose`, which the terms have, so a mistranslation is a wrong action, argument or branch that the airlock may permit, and pinning replays it forever. Three artifacts (the Dart a person reads, the terms that run, the proposals) can disagree. Noether adds that `analyzer` on model-written source in the loop resolves `file:///` URIs before rejecting them. Raised by all four.
+   DISPOSITION: fold, with Nick choosing among three: (a) delete the transpiler and have the model write the terms (Tesla); (b) keep Dart as a front end but make the **terms** the reviewed and approved artifact, rendered canonically, with the transpiler run parse-only on in-memory sources in a confined worker (Noether, Carnot); (c) an existing language the model already knows that has the properties itself, so the language written is the language run (Nick, 22:25: see the session note on Starlark).
+2. **Exponential growth with no loop.** `s = s + s` n times, or `x = x * x`, is exponential in body size; integers are unbounded. "Bounded by body size" is false. Raised by Noether, Carnot and Tesla.
+   DISPOSITION: fold. A maximum width on strings, lists and integer magnitude, enforced at every constructor, and the call halts on overflow. Delete the composition claim, and keep in-process evaluation only on this basis.
+3. **A digest is not an occurrence.** `await send(m); await send(m);` gives two proposals with one digest, and a later call with the same arguments aliases an earlier one. Raised by Noether, Carnot and Tesla.
+   DISPOSITION: fold. Identity is (call instance, ordinal); the proposal is stored at that ordinal; re-derivation must equal it, and a mismatch halts. No lookup by content across ordinals or calls. The digest is an assertion, not a key.
+4. **No dispatch state machine.** The record can't tell "dispatched" from "died before dispatch", so "one dispatch per proposal" is an aspiration. Raised by Noether, Carnot and Tesla.
+   DISPOSITION: fold, owner airlock-api-b3 / airlock-5c. Proposed → dispatched (durable before the effect) → recorded. Drivers treat (call instance, ordinal) as an idempotency key, and a retry reuses the occurrence id. "Never re-dispatch" becomes a liveness choice.
+5. **Fetched bytes still default to the logbook.** Raised by Noether and Tesla.
+   DISPOSITION: fold. The log holds the proposal and a hash; the bytes stay with the fetching driver; the parsing driver reads them by reference; retention is the driver's. A width cap makes a fat outcome unrepresentable in the core.
+6. **The example isn't a legal term program.** `graph`, `drive`, `folder`, `drivePath` and `Passage.refusedBecause` come from nowhere. Raised by Tesla.
+   DISPOSITION: fold. Ids are recorded arguments of the call; helpers are term operations; a body calls no other body.
+7. **Driver-shaped denials reopen probing.** An outcome saying not-found or too-large can be switched on. Raised by Tesla.
+   DISPOSITION: fold. Action outcomes are success-only; every denial is the airlock path that ends the call.
+8. **Partial operations.** Dart's `substring` throws; term operations are total. Raised by Noether and Carnot.
+   DISPOSITION: fold. Each operation is defined as total (an out-of-range call halts the call), or the front end rejects it.
+9. **"Halt" is undefined.** Every deploy changes the evaluator version. Raised by Maxwell.
+   DISPOSITION: fold. A halted call ends with an error result the model sees, and the turn continues.
+10. **Stage 1 sequences are a closure in the loop.** Raised by Maxwell. Tesla would allow a single driver action holding the suffix check and parse.
+    DISPOSITION: fold. In stage 1 the model composes: actions are the tools, one action per call.
+11. **Stage 2 needs a demonstrated need.** Raised by Carnot.
+    DISPOSITION: named tradeoff for Nick. Self-modification is his stated goal (21:33); the gate is a first level-1 workflow chosen with him.
+12. **Level 2 is still in the closed set.** Raised by Noether, Tesla and Carnot.
+    DISPOSITION: Nick's answer still pending. Remove it from the set until he answers.
+13. **The proof doesn't try to break the new claims.** Raised by all four.
+    DISPOSITION: fold the listed cases: identical proposals both dispatch, a second call doesn't reuse the first's outcome, width overflow halts, no raw bytes in the log, a `file:///` import is never read, out-of-range `substring`, a retry after unknown reuses the occurrence id.
+
+## Disposition
+
+RECAST, round 2 of 3. Flaw 1 is the fork, and it's Nick's: transpiler, terms written directly, or an existing language. The others fold regardless of which he picks.
