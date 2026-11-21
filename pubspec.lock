@@ -249,6 +249,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "0.6.0"
+  is_tools_api:
+    dependency: "direct main"
+    description:
+      name: is_tools_api
+      sha256: aecc75bbeee39d3f20ffa2d03ff0c7cae5b56ddf3142391f4396c802c54977f9
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.3.0"
   is_unix_socket_user_check:
     dependency: transitive
     description:
