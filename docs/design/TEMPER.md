@@ -103,3 +103,39 @@ Closed by round 2 (all families agree): escape is inexpressible in the terms; a 
 ## Disposition
 
 RECAST, round 2 of 3. Flaw 1 is the fork, and it's Nick's: transpiler, terms written directly, or an existing language. The others fold regardless of which he picks.
+
+---
+
+# Round 3: the model writes JSON terms (final round)
+
+**Overall verdict:** RECAST (4 of 4), final round of 3. **Not certified:** UN-TEMPERED for build until the folds below land and a fresh strike passes.
+**Struck:** dt-1795263356, 21 Nov 2026; families seated: Maxwell + Noether, Carnot, Tesla.
+
+Closed by round 3 (all agree): the transpiler is gone (one artifact); occurrence identity replaces content identity; dispatch states are explicit; bytes stay in drivers; level 2 is deleted. No family voted DISSOLVE in any of the 12 strikes: the frame has held, and the remaining flaws are contracts.
+
+## Fatal flaws (deduped)
+
+1. **`bound` is not a boundary, and level 1 grants the whole action library with any arguments.** The model writes the whole level-1 definition, `bound` included, and input and bound names can collide. Raised by Noether, Carnot, Tesla and Maxwell.
+   DISPOSITION: fold. **A level-1 body may call only the trajectory's existing tools** (with their bound values), never raw actions. Then "composition adds no reach" is true at the tool level. `bound` lives in its own immutable namespace that inputs can't shadow, set by whoever wrote the tool (a person, for level 0), and pinned per call with the body hash.
+2. **A retry after a halt or refusal re-sends completed effects** under a fresh call instance. Raised by Tesla, Carnot and Noether.
+   DISPOSITION: fold plus a named tradeoff. A call instance is allocated and recorded before its first proposal, and recovered unchanged. A halted call's error result **lists the occurrences that completed** ("send at ordinal 0: done"), so the model doesn't redo them blind. The residue is the same as a model calling `send` twice by hand: owner Nick, accepted, with the airlock's rules as the bound.
+3. **Aggregate sizes are unbounded** (nesting, sharing, records). Raised by Carnot, Tesla and Noether.
+   DISPOSITION: fold. A cap on each value's total serialized size and on its depth, a cap on the call's total allocation, and a step budget per call, all enforced at construction.
+4. **"Success-only" overclaims.** Driver failures, domain misses and lost acknowledgements are conflated, and successful results still carry information. Raised by Carnot, Tesla and Maxwell.
+   DISPOSITION: fold, narrowing the claim. Guarantee only that a body can't branch on an **airlock refusal or a driver failure**: both end the call. Successful results carry information by design. A lost acknowledgement on an effect is an unknown outcome, not a failure. "Exists or else" needs a list then a read.
+5. **Stage 1 passes references through the model**, which makes them forgeable and forwardable. Raised by Tesla and Maxwell.
+   DISPOSITION: fold, taking Tesla's shape. A stage-1 tool is **one driver action** that does its whole job (the docx driver's `readDocument`, teams_module's card build-and-send). No reference ever reaches the model.
+6. **`substring` clamping silently truncates.** Raised by Tesla.
+   DISPOSITION: fold. A clamped `prefix(s, n)` exists for "the first n characters"; an out-of-range `substring` halts the call.
+7. **`define_tool` exists at level 0.** Raised by Tesla.
+   DISPOSITION: fold. At level 0 the tool isn't mounted at all: a producer removed, not a check.
+8. **A person may misread positional JSON and merge it at level 0.** Raised by Tesla.
+   DISPOSITION: fold. Review uses a canonical rendering (each `propose` on its own line, with argument names from the table).
+9. **"Unknown, no re-dispatch" could re-dispatch safely,** since drivers are idempotent by occurrence. Raised by Noether.
+   DISPOSITION: named tradeoff, owner airlock-api-b3. Re-dispatch only where the destination honours the key; halt where it can't.
+10. **Call instance undefined; `record` form unspecified; action-argument types unchecked at definition.** Raised by Noether, Carnot and Maxwell.
+    DISPOSITION: fold. Call instance = the recorded tool call's entry id. Specify `record`. Check argument types against the action signatures at definition time.
+
+## Disposition
+
+Three rounds are spent. The design is **not certified**. Fold 1–10, then a fresh strike before any stage-2 build. Stage 1 (5) can proceed on its own: one driver action per tool, no evaluator.
