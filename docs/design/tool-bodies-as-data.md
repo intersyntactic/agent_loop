@@ -266,8 +266,12 @@ hands it to the conversation's reply tool, so the model calls tools only to
 act, never to speak, and a turn always reaches the person. Final text that
 is empty or only whitespace sends nothing. The model never supplies the
 address: the reply tool's destination comes from the trajectory's start
-entry, and the airlock's path-prefix rule for the starting conversation is
-the boundary. If the reply itself is refused, the turn ends under the
+entry (`EntryStartsTrajectory.replyEndpoint`, written by the docking
+station; Nick, 22 Nov 15:27), and the airlock's path-prefix rule for the
+starting conversation is the boundary. `replyEndpoint` is null for a
+trajectory started with no conversation behind it: then the loop proposes
+no reply, without an error, and the final text stays only in the logbook,
+as the model's turn. If the reply itself is refused, the turn ends under the
 per-turn cap on tool calls and repeated refusals; the logbook shows why.
 
 ## A tool's steps are a pure function
