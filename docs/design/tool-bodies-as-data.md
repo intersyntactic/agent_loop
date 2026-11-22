@@ -271,7 +271,23 @@ station; Nick, 22 Nov 15:27), and the airlock's path-prefix rule for the
 starting conversation is the boundary. `replyEndpoint` is null for a
 trajectory started with no conversation behind it: then the loop proposes
 no reply, without an error, and the final text stays only in the logbook,
-as the model's turn. If the reply itself is refused, the turn ends under the
+as the model's turn.
+
+**The reply is two actions** (Nick, 22 Nov 17:37), so the loop runs no
+module code and the airlock still decides on the exact bytes before they
+leave:
+
+0. Run the **teams-message** app, teams_module's request-building,
+   installed on the box and run by name through the program driver, with
+   the final text and the bound `replyEndpoint`. It has no effect; it
+   prints the Requests.
+1. `make-web-requests` with exactly the Requests from that run's
+   `Finished` `ExecResult.stdout`, never its `Reported` chunks, whose
+   boundaries fall wherever the pipe split.
+
+This is the first composition in the system that isn't a model's turn: a
+second effect that depends on the first one's successful outcome. For now
+it's the loop's own code, not a tool's steps. If the reply itself is refused, the turn ends under the
 per-turn cap on tool calls and repeated refusals; the logbook shows why.
 
 ## A tool's steps are a pure function
@@ -318,16 +334,18 @@ replay mechanism.
   the call. There's no lookup by content, so two identical `send`s in one
   tool are two places, and both dispatch.
 - **One numbering, not two.** is_airlock_api 0.15.0's `PlaceInTrajectory`
-  is sealed (Nick, 22 Nov 15:14; owned by airlock-api-b3), so every
-  proposal in a turn has a place and the two kinds can't be confused:
+  is sealed (Nick, 22 Nov 15:14 and 17:37; owned by airlock-api-b3), so
+  every proposal in a turn has a place and the kinds can't be confused:
+  - `ProposedForTheModelCall(turn)`, written `[turn, "model-call"]`: one
+    action;
   - `ProposedForAnIntent(turn, intent, action)`, written
     `[turn, intent, action]`: an intent's actions, numbered from 0;
-  - `ProposedByTheLoop(turn, modelCall | reply)`, written
-    `[turn, "model-call"]` or `[turn, "reply"]`: the loop's own proposals.
+  - `ProposedForTheReply(turn, action)`, written `[turn, "reply", action]`:
+    the reply's actions, numbered from 0 (see [Replying](#replying)).
 
   Within a turn the order is the model call, then intents by (intent,
   action), then the reply. 0.14's `[turn, step]` doesn't parse. There's no
-  Open card; Nick dropped it in the same ruling.
+  Open card; Nick dropped it at 15:14.
 - **Pinned per call:** the hash of the steps (bound values included), the
   operation table's version and the action library's version. A restart on
   different versions halts the call (an error result the model sees, not a
