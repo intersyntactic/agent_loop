@@ -155,7 +155,7 @@ Three rounds are spent. The design is **not certified**. Fold 1–10, then a fre
 | Carnot (GPT) | RECAST | Stage 1 holds; re-dispatching an unknown write can destroy newer data; replay can't validate consumed proposals; resource scope undefined. |
 | Tesla (Grok) | RECAST | Place, reference and re-dispatch are three loose conductors; computed paths escape review; level 1 hides payloads from the transcript. |
 
-No family voted DISSOLVE (16 strikes over 4 rounds). Three of four (Maxwell, Carnot, Tesla) independently doubt the circumstances report needs stage 2 at all.
+No family voted DISSOLVE (16 strikes over 4 rounds). Three of four (Maxwell, Carnot, Tesla) independently doubt the case review report needs stage 2 at all. (The strikes below call it by its former name, "circumstances report"; they're kept verbatim.)
 
 ## Fatal flaws (deduped, most severe first)
 
@@ -167,8 +167,8 @@ No family voted DISSOLVE (16 strikes over 4 rounds). Three of four (Maxwell, Car
    DISPOSITION: fold. A cap on effects per intent; the per-turn cap counts actions; one intent-wide accounting scope covers nested calls and replay work.
 4. **A reference is a global name.** With `fetch` returning the bare sha256, the own-chain rule is a check on a public namespace, and a hash in input or `toText` could become a read. Raised by Maxwell, Noether and Tesla.
    DISPOSITION: fold. A reference is a capability with no literal form: no string→reference, no reference in `input_schema`. The store is keyed by (trajectory, sha256), with the trajectory half supplied by the driver from the action it's carrying out, never from the proposal (airlock-api-b3's condition). The own-chain check is deleted.
-5. **The stage-2 gate may not need composition.** The circumstances report reads case data, then needs the model to write the report, then posts: judgement in the middle, so stage-1 tools serve it. Raised by Maxwell, Tesla and Carnot.
-   DISPOSITION: fold. The gate requires a branch on a **successful** outcome followed by a dependent second effect with no judgement between. If the circumstances report has none, CAM stays on stage 1 and stage 2 waits for another workflow.
+5. **The stage-2 gate may not need composition.** The case review report reads case data, then needs the model to write the report, then posts: judgement in the middle, so stage-1 tools serve it. Raised by Maxwell, Tesla and Carnot.
+   DISPOSITION: fold. The gate requires a branch on a **successful** outcome followed by a dependent second effect with no judgement between. If the case review report has none, CAM stays on stage 1 and stage 2 waits for another workflow.
 6. **Computed action arguments escape review.** `read_document` concatenates input into a Graph path, so `../` reaches what the reviewer never saw. Raised by Tesla.
    DISPOSITION: fold, stage 1 too. Actions take structured fields (drive, folder, name) and the driver joins them. Strike "a reviewer sees exactly what the tool reaches"; the reviewer sees bound values and the templates that still contain inputs.
 7. **Replay can't validate proposals whose outcomes were already consumed.** `next` returns only the frontier. Raised by Carnot.

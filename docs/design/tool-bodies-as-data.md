@@ -407,7 +407,7 @@ read the clock, so it would undo every property above.)
    reads (today `Output<O>.forModel`): the driver's action, or the loop?
 2. **The term language and the evaluator**, for level 1 and for level-0
    tools of more than one action. Gate: a first workflow that needs
-   composition. Nick chose **CAM's circumstances report** (22 Nov): it reads
+   composition. Nick chose **CAM's case review report** (22 Nov): it reads
    outside case data and posts a card or document to Teams. Its exact steps
    are being gathered; the evaluator is built against them, not against
    made-up examples.
