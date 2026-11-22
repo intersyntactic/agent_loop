@@ -139,3 +139,234 @@ Closed by round 3 (all agree): the transpiler is gone (one artifact); occurrence
 ## Disposition
 
 Three rounds are spent. The design is **not certified**. Fold 1–10, then a fresh strike before any stage-2 build. Stage 1 (5) can proceed on its own: one driver action per tool, no evaluator.
+
+
+# Round 4: steps, next(input, outcomes), peers folded
+
+**Overall verdict:** RECAST (4 of 4), past the 3-round budget. **Not certified.** Stage 2 (the evaluator) is **UN-TEMPERED: do not build.** Stage 1 survives every family's strike, with the stage-1 folds below.
+**Struck:** dt-1795316012, 22 Nov 2026, on head 3dee8e9 (tool-bodies-as-data.md, TEMPER.md, proving-the-evaluator.md; 53 KB; 0 cited paths not sent). Families seated: Maxwell, Noether, Carnot, Tesla (Wu disabled). Arrival order: Maxwell, then Noether, Carnot and Tesla together in one check.
+
+## Per-family verdicts
+
+| Family | Verdict | One line |
+|---|---|---|
+| Maxwell (Claude) | RECAST | The gate workflow may not need an evaluator; one intent outruns the per-turn cap; key the store by trajectory. |
+| Noether (DeepSeek) | RECAST | "Each effect exactly once" isn't conserved across a retry or the loop's own unplaced effects; effects are bounded in terms, not in count. |
+| Carnot (GPT) | RECAST | Stage 1 holds; re-dispatching an unknown write can destroy newer data; replay can't validate consumed proposals; resource scope undefined. |
+| Tesla (Grok) | RECAST | Place, reference and re-dispatch are three loose conductors; computed paths escape review; level 1 hides payloads from the transcript. |
+
+No family voted DISSOLVE (16 strikes over 4 rounds). Three of four (Maxwell, Carnot, Tesla) independently doubt the circumstances report needs stage 2 at all.
+
+## Fatal flaws (deduped, most severe first)
+
+1. **Re-dispatching an unknown outcome feeds a different success into `next`, and can destroy data.** A repeated `write` overwrites a newer write (A, lost ack, someone writes B, restart writes A); a repeated `fetch` or `model` returns a different value the steps may branch on. Raised by Carnot and Tesla. (This reverses airlock-api-b3's "safe to repeat" proposal from the same day.)
+   DISPOSITION: fold. **An unknown outcome always ends the call**; recovery is a new intent, as for a halt or refusal. Delete re-dispatch and the safe-to-repeat table; first-proof 10 becomes "never re-dispatched".
+2. **The loop's own proposals (model call, reply, Open card) have no place.** "One numbering" is false while they sit outside (turn, intent, action), and a restart can match a reply's outcome to a tool slot. Raised by Noether and Tesla; already open with airlock-api-b3.
+   DISPOSITION: fold. One place type covers every proposal in a turn; close the Open before any stage-2 build. Owner airlock-api-b3 (task 74).
+3. **Effects per intent are unbounded by count, and the per-turn cap counts intents.** One call can propose up to the term cap's worth of actions; a multi-action tool evades any per-turn rule, so "composition adds no reach" holds per action but not per rate. Raised by Maxwell, Noether and Carnot.
+   DISPOSITION: fold. A cap on effects per intent; the per-turn cap counts actions; one intent-wide accounting scope covers nested calls and replay work.
+4. **A reference is a global name.** With `fetch` returning the bare sha256, the own-chain rule is a check on a public namespace, and a hash in input or `toText` could become a read. Raised by Maxwell, Noether and Tesla.
+   DISPOSITION: fold. A reference is a capability with no literal form: no string→reference, no reference in `input_schema`. The store is keyed by (trajectory, sha256), with the trajectory half supplied by the driver from the action it's carrying out, never from the proposal (airlock-api-b3's condition). The own-chain check is deleted.
+5. **The stage-2 gate may not need composition.** The circumstances report reads case data, then needs the model to write the report, then posts: judgement in the middle, so stage-1 tools serve it. Raised by Maxwell, Tesla and Carnot.
+   DISPOSITION: fold. The gate requires a branch on a **successful** outcome followed by a dependent second effect with no judgement between. If the circumstances report has none, CAM stays on stage 1 and stage 2 waits for another workflow.
+6. **Computed action arguments escape review.** `read_document` concatenates input into a Graph path, so `../` reaches what the reviewer never saw. Raised by Tesla.
+   DISPOSITION: fold, stage 1 too. Actions take structured fields (drive, folder, name) and the driver joins them. Strike "a reviewer sees exactly what the tool reaches"; the reviewer sees bound values and the templates that still contain inputs.
+7. **Replay can't validate proposals whose outcomes were already consumed.** `next` returns only the frontier. Raised by Carnot.
+   DISPOSITION: fold. Replay derives the whole trace and matches every proposal to its stored one before supplying its outcome.
+8. **Stage 1's compound actions put several effects behind one Allow.** `readDocument` fetches and parses; a card send may make several requests. Raised by Carnot.
+   DISPOSITION: fold, stage 1. Each compound action declares its aggregate reach and partial-completion contract; narrow the visibility claim to "every action", not "every effect".
+9. **Level 1 hides payloads from the model and transcript.** `fetch → send` in a standing order moves bytes without them ever being shown. Raised by Tesla.
+   DISPOSITION: fold. State the grant as turn-saving and payload-hiding composition; a `call`'s outcome is exactly the callee's model-visible result.
+10. **Who renders an outcome for the model is open, and stage 1 can't ship without it.** Raised by Maxwell and Tesla.
+    DISPOSITION: fold, stage 1. Decide before stage 1 is called buildable.
+11. **Retry residue.** A retry after a partial failure re-runs completed effects. Raised by Noether.
+    DISPOSITION: named tradeoff, already accepted by Nick; the claim narrows to "at most once per call instance", and the ran-list extends to halts mid-call, not only refusals.
+12. **The round-4 forms are untested with models.** Raised by Maxwell.
+    DISPOSITION: fold. A model-writing experiment with controls on `input`/`bound`/`var` joins the first proof.
+13. **The Lean sketches quantify over invalid histories; theorem 3 should gate level 1.** Raised by Carnot and Noether.
+    DISPOSITION: fold into proving-the-evaluator.md. Define valid execution histories first; gate level 1 on theorem 3.
+14. **"Can't drift" overclaims for the operation table.** Generated labels don't prove the English matches the Dart. Raised by Carnot.
+    DISPOSITION: fold. The Dart is authoritative; narrow the claim to "one source"; test boundary behaviour.
+15. **`Refused` conflates denied, failed partway and unknown.** Raised by Noether.
+    DISPOSITION: named tradeoff, owner Nick (airlock-api-b3 has put the split to him).
+
+## What holds
+
+- The closed term language: unknown forms can't be written; three namespaces can't shadow; every string is literal.
+- One artifact: what is sent is what is recorded, reviewed and run.
+- `next(input, outcomes)` as the meaning, pins and halts on mismatch (with flaw 7's whole-trace match).
+- Level 1 calls only given tools, carries no `bound`, and dies with the trajectory; level 2 deleted; `define_tool` unmounted at level 0.
+- Refusals and failures end the call; bytes stay in drivers; values bounded at construction.
+- **Stage 1** (one action per tool, delivered as data, no evaluator) is buildable once flaws 6, 8 and 10 are folded.
+
+## Disposition
+
+Four rounds are spent, past the 3-round budget, so the honest result is **not certified for stage 2**. The flaws are now concentrated in stage 2 (replay, references, effect accounting) and in the gate itself. Recommended: build stage 1 with its three folds, and freeze stage 2 until a workflow is shown to need a judgement-free chain of effects (flaw 5). If one does, fold 1–15 and strike round 5.
+
+<!-- Each section below was written when that family returned. Arrival order, not a ranking. -->
+
+## MaxwellMergeSlam's Design Strike
+
+**Verdict:** RECAST
+
+**Summary:** The frame holds and round 4 removed real producers, but the stage-2 gate may not need the evaluator at all, one intent can now outrun the per-turn cap, and the own-chain rule for references is a check where a namespace would remove the producer.
+
+**Producer first:** Checks this design adds or hardens: (1) "a trajectory may read a reference only if an outcome on its own chain produced it". Harm: trajectory B reads trajectory A's case document. Producer: one machine-wide content-addressed store, keyed by a bare sha256, that any driver can read for any proposal naming a hash. That producer is OURS and removable: key the store by (trajectory, sha256), so another trajectory's bytes have no address a proposal could name; the own-chain check becomes unnecessary (first flaw below). (2) Re-derived proposal must equal the stored one. Harm: a restart proposes a different action than the one recorded. Producers: changed steps, operation table or action library between runs. Steps are already recorded and pinned by hash, so only the evaluator and table versions remain; keeping every shipped version runnable would remove it, but at a cost out of proportion to a rare halt the model sees. The halt stays; reason stated. (3) Level-1 checker rejecting `propose`, `bound`, calls to level-1 tools: already the producer-removed shape (the forms aren't in the level-1 grammar); fine. (4) Unknown-outcome halt for start and make-web-requests: the producer is the outside world's lack of idempotency, which we can't remove; check reviewed normally.
+
+**Fatal flaws:**
+- PRODUCER FIRST — make cross-trajectory reads impossible: key the content-addressed store by (trajectory, sha256) and have a driver's read reach name only its own trajectory's prefix; then the own-chain check ("Documents stay in drivers") becomes unnecessary. As written, a forgotten check in any one driver leaks documents across trajectories (Hart case data, in the gate workflow).
+- WRONG OPTION-FRAME (the gate) — "Stages" makes CAM's circumstances report the workflow that justifies stage 2, but nobody in the bundle knows its steps, and its known shape (read outside case data, then write a report, then post a card) has a MODEL step in the middle: the report's prose is model judgement. Composition only saves turns across effects with NO judgement between them. If the report is read → model writes → post, stage 1 tools serve it fully and the evaluator has no customer. The design must first establish that the gate workflow contains a judgement-free chain of two or more effects; otherwise stage 2's gate is unmet and building the evaluator is premature.
+- UNDER-COUNTED BLAST-RADIUS — the per-turn cap (on tool calls and repeated refusals, "Replying") counts intents. A level-1 tool, or a level-0 tool of several actions, turns one intent into up to (cap on terms evaluated)-bounded many effects. "Level 1 opens no doors" is true per action and false per rate: a model turn used to be the natural throttle on make-web-requests. Fold: the per-turn cap counts actions, not intents, and a level-1 tool declares or is bounded to a maximum number of effects.
+- UNSTATED ASSUMPTION (evidence) — the 15/15 and 30/30 evidence was measured on `fn` parameter lists and `$`-variables; round 4 replaced both with `["input",…]`, `["bound",…]`, `["var",…]`. The doc notes it is untested, but nothing gates on it. Make "models write the new forms at least as reliably" a first-proof item, re-running experiment 2 with controls.
+- MISSING FAILURE MODE (stage 1 is not buildable yet) — "Open: who turns an action's outcome into the text the model reads". Stage 1 cannot ship without an answer; for a document read it decides whether a stranger's text reaches the model raw, bounded, or framed. Settle it before calling stage 1 buildable now.
+
+**What holds:**
+- `next(input, outcomes)` as the meaning: replay as a definition, not a mechanism; testable with no fakes; Temporal's model with purity enforced by the language.
+- Level 1 calling only given tools, with no `bound`: reach removed by grammar, not checked.
+- Every reference a form and every string literal: removes the `$` ambiguity and the duplicated parameter list by construction.
+- Dispatch states as the existing proposal / Allow / outcome entries, and "safe to repeat" on the closed program set rather than per destination.
+- `Refused` reported verbatim, never "did not run".
+
+**If RECAST, what to fold back:**
+- "Documents stay in drivers": store keyed by (trajectory, sha256); delete the own-chain rule and first-proof item 18's check in favour of "another trajectory's reference has no address".
+- "Stages": the gate requires a named judgement-free chain of two or more effects inside the circumstances report; if none exists, stage 2 waits for another workflow.
+- "Replying" / "Effects": the per-turn cap counts actions; a multi-action tool is bounded in effects per call.
+- "First proof": add a model-writing experiment on the round-4 forms, with negative and positive controls.
+- "Stages", stage 1: decide who renders an outcome for the model before stage 1 is called buildable.
+
+
+## NoetherNullPointer's Design Strike
+
+**Verdict:** RECAST
+
+**Summary:** The design's conserved quantity — "same steps + same history ⇒ same actions, each effect exactly once" — is not conserved across a retry, a partial refusal, or the loop's own un-placed effects; and the per-call blast radius is bounded in *terms*, not in *effects*, so the per-turn cap conserves nothing.
+
+**Producer first:**
+
+The design adds/hardens these checks. For each, the harm it exists to catch and the step that *produces* that harm:
+
+- **Replay-equality halt** (tool-bodies-as-data.md §Replay). Harm: `fetch`'s bytes ride a `send` — a wrong effect runs. Producer: the loop consuming "the outcome recorded at this place" without checking the proposal at that place matches. **Removed**: outcomes are bound to the proposal's identity and a mismatch halts. The check is a fail-closed assertion, not a guard over a live producer. Good.
+- **Version-pin halt** (body hash, operation-table version, action-library version). Harm: a drift replays a different action sequence forever. Producer: the loop not pinning what it evaluates. **Removed** by pinning. Good.
+- **Input-schema check** (`Input.parse`). Harm: a malformed input reaches the steps. Producer: the loop not checking at the boundary. **Removed** by checking at the boundary. Good.
+- **Definition checker** (forms, ops, types, sizes, depth). Harm: a term the evaluator can't evaluate safely. Producer: the model/module writing the term. Producer is untrusted and cannot be deleted; rejection at definition is the right shape. Good.
+- **Level-1 check** (no action, no `bound`, no level-1 call). Harm: a model-written tool reaches raw actions. Producer: the model writing the definition. Untrusted; check stays. Good.
+- **`define_tool` unmounted at level 0.** Harm: a level-0 model writes a tool. Producer: the manifest. **Removed** by not mounting. Good.
+- **Own-chain reference check** (§Documents stay in drivers). Harm: trajectory A reads B's document. Producer: the read action accepting a raw hash. The design *also* has an opaque reference type, which should make a raw hash unrepresentable. If the type is the guard, the chain check is a second guard for a state the type should prevent — pick one. If the type is leaky (the reference is the hash with a tag the model can write), fix the type; do not add the check.
+- **Retry residue** (not a check — an accepted hole, §Effects, refusals, halts). Harm: a completed `send` re-runs. Producer: **ours** — the loop allocating a new call instance for the retry. **Not removed.** This is the broken invariant. Name it, or remove it with a resume mechanism.
+
+**Fatal flaws:**
+
+- **"Each effect exactly once" is not conserved across a retry.** [CLASS: conserved-quantity mismatch] A partial failure or a `Refused("sent 1 of 3")` ends the call; the retry is a new intent at a new place; the completed effects re-run. The error result that "lists what already happened" is *advisory* — a producer of the double-effect (the new call instance) is alive and unguarded. The design's own words, "the same as a model calling `send` twice by hand," admit it. The invariant the design *claims* is not the invariant it *conserves*.
+- **The loop's own effects have no place, and "the loop has no effects" is false.** [CLASS: broken identity / missing failure mode] §Where it runs says the loop "has no effects"; §Replay then lists "the loop's own proposals in a turn (the model call, the reply from final text)" and marks their place **Open**. The model call costs money and the reply sends a message — both are effects the airlock decides — and the model call happens *before* the reply that fixes the intent number. The address space `(turn, intent, action)` does not cover them, so replay's identity is incomplete at both ends of a turn.
+- **The blast radius is bounded in terms, not in proposals.** [CLASS: under-counted blast radius] The cap is "at most 10,000 terms evaluated" and "4 MiB allocated" — a `propose` is one term, so one call may dispatch on the order of thousands of actions. The per-turn cap counts **tool calls**, and one call is one call. A single model turn can therefore drive thousands of effects through the airlock, each individually visible, none of them bounded by the cap the design points at.
+- **"Composition adds no reach" is false under any per-turn rule.** [CLASS: unstated assumption] The doc's own per-turn cap on tool calls *is* a per-turn rule. A multi-action tool sends N effects in one call where the model would need N turns; the tool evades the cap. "Level 1 saves turns; it doesn't open doors" holds only if every airlock rule is per-action and stateless across actions — which the design never states and its own cap contradicts.
+- **`Refused` conflates "nothing happened" with "failed partway."** [CLASS: wrong state model] A `Refused` can follow partial work (`make-web-requests` "sent 1 of 3"), so the "safe to repeat" classification — a fixed fact per program — has no entry for a partial refusal. The split (denied / failed-partway / unknown) is pending Nick's ruling, so the invariant "a refusal means retry is safe" is broken on the one path the doc names.
+- **A halt is not a rollback.** [CLASS: missing failure mode] §Effects says a halt (replay mismatch, unknown outcome) "ends the call with an error result the model sees." It does not undo dispatched effects; a replay mismatch is detected *after* the airlock may have dispatched. The error list covers the `Refused` case; the design never says a *halt mid-call* also lists dispatched occurrences, so the retry blind spot of flaw 1 applies here too.
+
+**What holds:**
+
+- One artifact: what is sent is what is recorded, reviewed and run.
+- Replay by occurrence identity `(turn, intent, action)` with a fail-closed equality halt, once the loop's own places are added.
+- The pinned execution contract (body hash, table version, action-library version).
+- Effects are proposals the airlock decides; actions remain a closed library people add.
+- The term language is closed: no import, no host call, no loop, no recursion, no clock, no randomness, no exception other than `fail`.
+- Values bounded at construction; no operation throws; out-of-range halts, `prefix` clamps.
+- Refusals and driver failures end the call; the model sees them; a refusal is not a matchable value.
+- Level 2 deleted; level 1 dies with the trajectory; `define_tool` unmounted at level 0.
+- Bytes stay in drivers; references are opaque; a stranger's document is parsed in a confined driver.
+- Stage 1 (one driver action per tool, no evaluator) proceeds on its own.
+
+**If RECAST, what to fold back:**
+
+- **State the conserved quantity honestly, or remove its producer.** Either add a *resume* mechanism (a retry re-enters the same call instance and continues from the first unrecorded ordinal), or rewrite the claim to "each effect at most once **per call instance**," and make the error result's occurrence list normative, not advisory. Today it is the latter with the former's rhetoric.
+- **Give the loop's own effects a place.** Reserve an address for the model call and the reply (a reserved intent, or a distinct loop-level place) before the intent number exists, or move both into a driver. §Replay's "Open" is a hole in the identity scheme, not a note.
+- **Cap proposals per call, and count actions — not calls — in the per-turn cap.** A term cap of 10,000 is not an effect cap.
+- **State that all airlock rules are per-action, or name the composition evasion.** If any rule is per-turn, a multi-action tool evades it and "composition adds no reach" is false.
+- **Split `Refused` before building stage 2**, and define "safe to repeat" for a partial refusal — the one case the current classification cannot express.
+- **Make the reference an opaque type with no literal form**, so a raw hash is unrepresentable; then delete the own-chain check as redundant, or explain how a reference crosses a chain.
+- **Gate level 1 on theorem 3 (level-1 reach), not just theorem 1.** The design's strongest security claim is the Lean doc's "uncertain one"; proving the easy theorem buys the wrong confidence.
+- **Extend the occurrence list to a halt mid-call**, not only to a `Refused`, so a retry after a replay mismatch or an unknown outcome is not blind.
+
+## CarnotCodeCarver's Design Strike
+
+**Verdict:** RECAST
+
+**Summary:** Stage 1 holds. Stage 2 still has gaps in crash recovery, replay validation and resource accounting. No real engine matches the Carnot cycle; a reviewer's job is to say how far short we are. Here, the entropy enters through recovery semantics. Dijkstra: "Simplicity is prerequisite for reliability."
+
+**Producer first:** The harm is overwriting newer user data after a crash. The crash or lost acknowledgement is the trigger; automatically redispatching an unknown write produces the harm. That producer can be deleted: leave unknown writes unresolved unless the destination provides an atomic retry contract. Other producers are addressed below: positional outcome consumption, repeated evaluation and compound driver actions. Validation of untrusted definitions cannot disappear because accepting module- and model-supplied terms is the feature.
+
+**Fatal flaws:**
+- Make recovery overwrites impossible: remove automatic redispatch of unknown writes; then the blanket safe-to-repeat classification for write becomes unnecessary. Writing the same bytes twice is idempotent only without intervening changes. Write A, lose acknowledgement, another actor writes B, restart writes A: recovery destroys B. Safety belongs to an operation and destination contract, not merely a program name.
+- The replay interface discards the evidence its equality check needs. next(input, outcomes) consumes historical outcomes internally and returns only the next proposal. Comparing that returned proposal cannot verify the earlier proposals whose outcomes were already consumed. Require each historical proposal to be exposed and matched before supplying its outcome, or explicitly make authenticated proposal/outcome history part of the evaluator interface. Test corruption of an already-consumed proposal, not just disagreement at the frontier.
+- The resource contract does not compose across level-1 calls and repeated next invocations. 'Per call' could mean each given-tool invocation, each evaluator invocation, or the entire model intent. Those interpretations have different limits. A compact level-1 tool can repeatedly invoke large given tools, and replay repeats that work. Define one intent-wide accounting scope covering expanded calls, replay work, allocation and effect count. Alternatively, delete restart-from-the-beginning evaluation and retain an explicit evaluator state.
+- Stage 1 moves compound work behind a single proposal while retaining the claim that every effect is visible to the airlock. readDocument fetches and parses; card build-and-send may perform several requests. One Allow can therefore cover effects the airlock never separately decides. Specify the complete aggregate reach and partial-completion contract of each compound action, and narrow the visibility claim. Otherwise staging removes the security property it claims to preserve.
+- The proof statements admit histories that invalidate their conclusions. checked_never_stuck quantifies over arbitrary outcomes without requiring values to match action result types. refusal_ends quantifies over a refusal appended even beyond a tool's final action, where the evaluator may already return normally. Define valid execution histories first, including nested calls, consumed outcomes and resource accounting. Prove properties over those histories; proving the current sketches would certify a different machine.
+- A shared operation table does not eliminate semantic drift. English meaning and Dart implementation remain independent entries; generated labels and signatures cannot establish their agreement. The companion document acknowledges this, while the main design claims it cannot happen. Treat executable semantics as authoritative, test their boundary behavior, and remove the stronger claim.
+
+**What holds:**
+- One recorded term artifact removes the transpiler as a separate semantic authority.
+- Level 1 cannot name raw actions, supply bound values or persist across trajectories.
+- Occurrence identity, immutable tool definitions and explicit unknown outcomes are the right foundations.
+- Document parsing belongs in confined drivers; bounded core values and opaque references reduce blast radius.
+- Stage 1 can deliver tools over the wire without building the evaluator.
+
+**If RECAST, what to fold back:**
+- Ship stage 1 with explicit compound-action reach and completion semantics.
+- Remove blanket write retries; leave unsupported unknown outcomes unresolved.
+- Specify replay as proposal-by-proposal history consumption, with intent-wide resource accounting.
+- Obtain CAM's actual workflow before committing to stage 2. Compare model composition and one purpose-built driver action against the evaluator.
+- Defer Lean implementation until the execution-history contract is precise. An oracle is useful evidence, not a proof of the Dart runtime.
+
+
+## Tesla, the Arc-Prophet's Design Strike
+
+Tesla: "If you want the secrets of the universe, think in energy, frequency and vibration."
+
+**Verdict:** RECAST
+
+**Summary:** Round 4 closed the term-language cage and then left three live conductors — place, reference, and re-dispatch — humming at the frequency where a restart still writes the wrong world.
+
+**Producer first:** The design is a cathedral of checks. Name the makers of the harm.
+
+1. **Wrong later action after a lost ack (read/write/model auto-retry).** Trigger: crash after Allow, before outcome. Producer: *The airlock's dispatch states* classifies some programs “safe to repeat” and **feeds a second success into `next`**. World-idempotent is not outcome-identical (`write.replaced`, a mutated `fetch`, a new `model` reply); steps may branch on success. **Delete automatic re-dispatch.** Unknown always ends the call (error result, turn continues) — the recovery you already accepted for halt/refusal. The safe-to-repeat table, and first-proof #10, become unnecessary.
+
+2. **Trajectory B reads trajectory A's document.** Trigger: a hash leaks or collides. Producer: `fetch` returns **sha256 as the language-level Ref** (*Documents stay in drivers*), so a global name is the capability; *own-chain* is a look-up that can fail open. **Make Ref a per-outcome capability (the producing place, or an unguessable token).** The store may still be content-addressed behind the driver. Then own-chain (proof #18) is not a permission check on a public namespace.
+
+3. **A reviewed tool hits a path the reviewer never saw.** Trigger: `name` is `../secrets.docx`. Producer: the flagship `read_document` **concatenates input into a Graph URL** (*The shape*), while the prose claims the reviewer “sees exactly what the tool reaches.” **Give `fetch`/`readDocument` structured fields (drive, folder, name); the driver joins them so `..` cannot climb.** Airlock prefix-on-a-computed-string becomes backup, not the boundary.
+
+4. **A restart zips the reply (or the model call) onto a tool action.** Trigger: crash mid-turn. Producer: *Replay* asserts **one numbering**, then leaves the loop's own proposals **Open** — a second address space in the same logbook. **Every proposal in a turn, including model and reply, occupies the same place type.** Equality-on-rederive cannot save identities that have no slot.
+
+5. **String becomes a document read.** Trigger: a hash in JSON input or `toText` of a ref. Producer: Ref is a hash-shaped value and the “No” list never forbids constructing one except from an outcome. **Refs are not JSON; no op, no `input_schema` type, no action argument accepts a string where a Ref is required.** The own-chain check is then not the thing standing between two trajectories.
+
+6. **Retry re-sends `make-web-requests`.** Trigger: halt/unknown/refusal. Producer: a retry is a **new intent at a new place**. You cannot delete this while destinations honour no key; Nick already accepted it. Keep the “already ran” error list. Do not “fix” it with another guard.
+
+7. **Malformed terms / wrong input / oversize / level-1 `propose`.** Untrusted bytes must cross a boundary; `Input.parse`, definition checking, and “`propose` is inexpressible at level 1” stay. `define_tool` unmounted at level 0 is already producer-first (good). Caps-at-construction already make runaway values unrepresentable (good).
+
+**Fatal flaws:**
+- **The place is still two clocks.** *Replay* (“One numbering, not two”) plus the Open line: model call and reply have no intent, so they do not live at `(turn, intent, action)`. Round 1's zip was “outcomes ride `[turn, step]` onto a different action.” You renamed the triple and left the loop's effects off it. At 3am a restart will ask the airlock for “action 0” and the reply will answer. Proofs 2–6 never spawn a loop proposal. Fold: one place sort for every propose in the turn; close the Open before stage 2.
+- **Unknown + “safe to repeat” re-enters a different success.** *The airlock's dispatch states* and proof **#10**. Tesla: "The spread of civilisation may be likened to a fire; first, a feeble spark, next a flickering flame, then a mighty blaze, ever increasing in speed and power." You doused automatic re-dispatch in round 2, then relit it for four programs. `next` is allowed to `if` on a successful outcome. A second `write`/`fetch`/`model` is a different note in the chord. Fold: unknown always halts; repeating is a new intent.
+- **`bound` is a prefix, not a reach.** *A tool definition is one JSON object* / *What the operator grants*. Three namespaces cannot save a fourth: the **computed argument**. Review renders labelled args; it cannot freeze a URL that still contains `["input", "name"]`. Fold: no free-form URL from terms; structured action args; strike the sentence “a reviewer sees exactly what the tool reaches.”
+- **Ref = sha256 makes the own-chain rule a check on a global name.** *Documents stay in drivers*. 256 bits of content-address is a doorbell anyone who knows the file can ring. Proof #18 is that doorbell's bouncer. Fold: Ref is a capability; hash never enters the term language; no string→Ref (add it to the “No” list and to proof #12).
+- **Level 1 is not “saves turns.”** *What the operator grants*. A standing order `fetch → send` moves bytes **drive → Teams without the payload entering the model or the transcript**. The model doing the same in two calls must show the text. That is a confidentiality door, and it gets wider if `Output.forModel` (the Open in *Stages* §1) is a thinner projection than the value `call` sees. Fold: state the grant as closed-loop composition **and** payload-hiding; pin that a `call`'s outcome **is** the callee's model-visible result, same bytes.
+- **Stage 2's gate may not be a language.** *Stages* / *First proof*. CAM's circumstances report is “read outside case data and post a card.” That is **one driver action**, or two stage-1 tools with the model in the middle — the shape Maxwell named and you staged. Building the evaluator *against that workflow* resonates at the wrong harmonic: you will certify a language on an example that did not need one. Fold: either pick a gate that *requires* `if`/`let`/`call` (branch on a successful fetch, then a second effect), or keep stage 1 as the CAM path and do not light the evaluator for it.
+
+**What holds:**
+- The closed term language: no host, no import, no loop, no clock, no RNG — unknown forms cannot be written. Three namespaces that cannot shadow. That cage is real.
+- One artifact: the JSON that is sent is the JSON that is recorded, rendered, and run. The transpiler is dead. Stay that way.
+- `propose` / `call` split by level; level 2 gone; `define_tool` not mounted at 0. Recursion cannot be written. Two-deep is a hard lid.
+- Refusals and driver failures are not values; they end the call. `fail` is a standing order, not a probe.
+- Bytes stay in drivers; core values are bounded at construction; the operation table is the one generator for spec, labels, and checker.
+- `next(input, outcomes) → Propose | Return | Fail`, replay as the same function, pin hashes, halt on mismatch. For *tool* proposes, that chord is in tune.
+- Stage 1's “one action per tool, no reference to the model” is a buildable subset. documents_module can move without an interpreter.
+- The positional-term experiments (30/30, 15/15) are honest: “no evidence the model struggles,” and the untested `input`/`bound`/`var` forms are flagged.
+
+**If RECAST, what to fold back:**
+- **Replay:** Define place as covering *every* proposal in a turn (model, each intent's actions, reply). Delete the Open or it is a second numbering. First proof: crash between model-call and first tool action; crash between last tool action and reply; both resume at the stored place, never a tool slot.
+- **Dispatch:** Unknown outcome **always** ends the call. Strike “safe to repeat” auto re-dispatch and proof #10. Recovery = new intent (already the halt/refusal story).
+- **Documents / values:** Ref is a capability derived only from an outcome on this call; sha256 is driver-internal. Add to the No-list and to proof #12: no string→Ref, no Ref in `input_schema`, `toText(ref)` is not an address.
+- **Actions:** Graph/file reads take `(drive, folder, name)` (or equivalent), not a concatenated path. Rewrite the `read_document` example. Replace “reviewer sees exactly what the tool reaches” with “reviewer sees bound values and the templates that still contain inputs.”
+- **Grant:** Level 1 = turn-saving **and** transcript-hiding composition over given tools. Pin `call` outcome = that tool's model-visible result (close the stage-1 Open in the same sentence).
+- **Gate:** Stage 2's first proof workflow must contain a branch on a **successful** outcome and a second effect that depends on it. If CAM's report does not, it stays stage 1.
+- **Proof list:** Renumber 1–19 as one sequence; add places-for-loop-proposals, unknown-never-redispatches, string↛Ref, structured fetch args.
+
+Nine is completion; you are on four. The spark is alive — do not ship the interpreter until the place, the Ref, and the lost-ack story are one circuit, not three.
