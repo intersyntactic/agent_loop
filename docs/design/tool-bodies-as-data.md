@@ -21,8 +21,16 @@ the airlock.
 Mission → Trajectory → Turn → Intent → the tool's **Steps** → Action ⇄ Outcome
 
 - An **intent** is one tool call in the model's reply.
-- A tool's **steps** are what it does when called: values worked out in the
-  loop, and proposals.
+- A tool's **steps** are what it does when called. A step is either a
+  **proposal**, which becomes an action, or a **pure value** worked out on
+  the way to one (`concat`, `if`, `get`). Only proposals reach the airlock.
+- **The loop computes, but has no effects.** It works out pure values
+  itself, as it already parses replies and builds prompts; anything that
+  touches the world is a proposal. A pure value has nothing for the airlock
+  to decide, and replay derives it again identically.
+- Only a tool's **result** reaches the model, or, if the call ends early,
+  an error listing the actions already done. Values along the way stay in
+  the loop and the record.
 - An **action** is one proposal, which the airlock decides; each has exactly
   one **outcome**.
 - A **place** is an address, not a level: **(turn, intent, action)**, "the
@@ -45,6 +53,8 @@ Mission → Trajectory → Turn → Intent → the tool's **Steps** → Action �
 - Level 2, model-written tools kept across trajectories, is deleted (23:10).
 - The point is that modules send tools over the wire as data; the word is
   **steps**, not "body", which pointed at code that executes (22 Nov).
+- "The loop only knows tools" means **no effects in the loop**, not no
+  computation (22 Nov).
 
 ## Evidence: the model writes terms reliably
 
