@@ -100,14 +100,17 @@ One artifact: what is sent is what's recorded, reviewed and run.
  "description": "Reads a Word document from the reports folder.",
  "input_schema": {"type": "object", "properties": {"name": {"type": "string"}}, "required": ["name"]},
  "bound": {"drive": "b!xyz", "folder": "01abc"},
- "steps": ["fn", ["name"],
-   ["if", ["not", ["endsWith", ["lower", "$name"], ".docx"]],
-     ["fail", ["concat", "$name", " is not a .docx"]],
+ "steps":
+   ["if", ["not", ["endsWith", ["lower", ["input", "name"]], ".docx"]],
+     ["fail", ["concat", ["input", "name"], " is not a .docx"]],
      ["let", ["file", ["propose", "fetch", "graph",
                 ["concat", "/drives/", ["bound", "drive"], "/items/", ["bound", "folder"],
-                           ":/", "$name", ":/content"]]],
-       ["get", ["propose", "docxToPassage", "$file", 5000], "text"]]]]}
+                           ":/", ["input", "name"], ":/content"]]],
+       ["get", ["propose", "docxToPassage", ["var", "file"], 5000], "text"]]]}
 ```
+
+(Action names in examples, such as `fetch`, `docxToPassage` and `send`, stand
+for an is_airlock_api program on an input; `send` is a `make-web-requests`.)
 
 `bound` holds values fixed when the tool is defined, such as the drive and
 folder ids. They're recorded with the tool, so the model never types them,
@@ -115,10 +118,26 @@ and a reviewer sees exactly what the tool reaches. **Only a level-0 tool has
 `bound`**, set by the person who wrote it; a level-1 definition has no
 `bound` field to write (see [What the operator grants](#what-the-operator-grants)).
 
-The `fn` parameters are the call's input only. Bound values live in their
-own namespace, read with `["bound", "drive"]` (a literal name, checked
-against `bound` at definition), so an input can never shadow one. The bound
-values are part of what's hashed and pinned for each call.
+**Every reference is a form, and every string is literal text.** There are
+three namespaces, each read by its own form with a literal name:
+`["input", "name"]` (checked against `input_schema`'s properties),
+`["bound", "drive"]` (checked against `bound`) and `["var", "file"]` (a
+`let` in scope). So inputs, bound values and local names can't shadow each
+other, there's no parameter list to disagree with `input_schema`, and a
+literal like `"$budget.docx"` means exactly that. (The experiment used
+`fn` parameter lists and `$`-prefixed variables; the forms are untested
+with models, so the next experiment measures them.) The bound values are
+part of what's hashed and pinned for each call.
+
+**Input is checked against `input_schema` when a call comes in.**
+is_tools_api's `Input.parse(schema)` rebuilds the same checker a module
+built in Dart from the schema it sent, so the schema and its checker are
+one description read back, never two.
+
+No output schema: a tool's return type is its action's declared outcome
+(stage 1) or derived from the outcomes of the actions and tools it uses
+(stage 2). Where the model is shown a return type, it's rendered from those.
+No `concurrent` flag either: the airlock decides every effect.
 
 ### The two kinds of tool
 
@@ -134,12 +153,13 @@ propose actions), and recursion can't be written.
 
 - **Values:** strings, integers, booleans, records, lists, and opaque
   **references** to recorded outcomes (what `fetch` returns).
-- **Forms:** `fn`, `let`, `if`, `fail`, `bound`, `record`, `list`, `propose`
-  (level 0 only), `call` (level 1 only), and `[<op>, …]` for a fixed table of
-  pure operations, each with a fixed argument order (the table in the
-  experiment: `concat`, `lower`, `endsWith`, `prefix`, `substring`, `get`,
-  `filterSuffix`, `maxBy`, `toText`, …). A string starting with `$` is a
-  variable; any other string is literal text.
+- **Forms:** `input`, `bound`, `var`, `let`, `if`, `fail`, `record`, `list`,
+  `propose` (level 0 only), `call` (level 1 only), and `[<op>, …]` for a
+  fixed table of pure operations, each with a fixed argument order (the
+  table in the experiment: `concat`, `lower`, `endsWith`, `prefix`,
+  `substring`, `get`, `filterSuffix`, `maxBy`, `toText`, …). A tool's steps
+  are one term; there's no `fn` wrapper, since `input_schema` already names
+  the inputs.
 - **Records:** `["record", "title", <term>, "count", <term>]` takes
   alternating literal keys and terms. Keys are non-empty, unique and written
   out, never computed, so a record's shape is known at definition. `["get",
@@ -202,11 +222,19 @@ The experiment's throwaway evaluator was about 250 lines of Dart.
   outcome) also ends the call with an error result the model sees, naming why.
   The turn continues; a halt never wedges a trajectory.
 - **A call that ends early lists what already happened.** Its error result
-  names each action that completed and its outcome ("`send`, action 0:
-  done"), so a model that retries knows what not to redo. A retry is a new
-  intent, at a new place; the record doesn't stop it re-sending. That
-  residue is the same as a model calling `send` twice by hand, and the
-  airlock's rules are its bound. Accepted by Nick.
+  names each action that ran and its outcome ("`make-web-requests`,
+  action 0: ran"), so a model that retries knows what not to redo. The
+  action that ended the call is reported with its refusal reason verbatim,
+  **never as "did not run"**: is_effects' `Outcome` today is `Ran |
+  Refused(why)`, and a `Refused` can follow partial work (a
+  `make-web-requests` refused with "sent 1 of 3"). A retry is a new intent,
+  at a new place; the record doesn't stop it re-sending. That residue is
+  the same as a model calling `send` twice by hand, and the airlock's rules
+  are its bound. Accepted by Nick.
+- **Pending Nick's ruling:** airlock-api-b3 has put a split of `Refused`
+  to Nick (denied / failed partway / unknown). Until then the loop builds
+  on `Refused`, and only the airlock's decision entry tells a deny from a
+  driver failure.
 
 ### Review
 
@@ -217,12 +245,19 @@ recorded steps, so what is reviewed is what runs.
 
 ### Documents stay in drivers
 
-`fetch` returns a **reference**, and the bytes stay with the fetching driver.
-The logbook records the proposal and a hash, not the bytes. `docxToPassage`
-(the docx driver) reads the bytes by reference and returns an
-already-bounded passage. A stranger's document is parsed only in a confined
-driver, never in the core, and never copied into the record. Owner of the
-cross-driver read: airlock-api-b3 with the drivers.
+`fetch` returns a **reference**: the sha256 the logbook already records.
+The fetching driver writes the bytes to a content-addressed store on the
+machine, keyed by that hash; other drivers only read it, and drivers never
+call each other. `docxToPassage` (the docx driver) is a proposal like any
+other, whose reach names the hash, so the airlock sees and decides the
+read; it returns an already-bounded passage. A stranger's document is
+parsed only in a confined driver, never in the core, and never copied into
+the record.
+
+**A trajectory may read a reference only if an outcome entry on its own
+chain produced it.** Otherwise one trajectory could read another's document
+by guessing or copying a hash. Owner: airlock-api-b3 with the drivers
+(stage 2).
 
 ## Replying
 
@@ -292,14 +327,24 @@ replay mechanism.
 
 ### The airlock's dispatch states
 
-Owner: airlock-api-b3 / airlock-5c. A proposal is **proposed** (in the
-record) → **dispatched** (recorded durably *before* the effect) → **recorded**
-(the outcome). Drivers treat the place as an idempotency key, and a retry
-reuses it. A proposal found dispatched but unrecorded is an **unknown
-outcome**. Where the destination honours the idempotency key, the airlock
-re-dispatches it under the same key; where it can't, the call halts and the
-outcome stays unknown. Which destinations honour the key is
-airlock-api-b3's call, recorded per driver.
+Owner: airlock-api-b3 / airlock-5c. **These states already exist in the
+logbook; no new entry is needed.** The proposal entry is *proposed*. The
+airlock's Allow decision entry, written durably before it calls the driver,
+is *dispatched*. The outcome entry is *recorded*. An Allow with no outcome
+after it is an **unknown outcome**.
+
+Whether an unknown outcome may be re-dispatched depends on whether
+**repeating the action leaves the world as it was**. That's a fixed fact
+about each program, so it lives on the closed program set, not per driver
+or per destination (none of ours honours an idempotency key, and
+`make-web-requests` refuses every header but content-type, so a key
+couldn't travel):
+
+- **safe to repeat:** `read`, `read-bytes`, `fetch` (no effect); `write`
+  (the same bytes end in the same state, though `replaced` may then say
+  true); `model` (it costs money, but the loop never saw the lost reply);
+- **halt, outcome stays unknown:** `start` (any executable) and
+  `make-web-requests`.
 
 ## What the operator grants
 
@@ -352,7 +397,14 @@ read the clock, so it would undo every property above.)
    format as stage 2; the checker accepts only that one shape, and carrying
    it out is filling in the arguments and proposing. No reference ever
    reaches the model, so none can be forged or forwarded. This serves CAM
-   now, and a module written against it keeps working in stage 2.
+   now, and a module written against it keeps working in stage 2. Stage
+   1's steps are typed exactly, in is_tools_api: an action name plus
+   arguments that are each a bound value, an input field or a literal.
+   Nothing delivers tools to the loop today (documents_module's
+   `ToolHandler`s run nowhere), so there's nothing to migrate but
+   documents_module.
+   Open: in stage 1, who turns an action's outcome into the text the model
+   reads (today `Output<O>.forModel`): the driver's action, or the loop?
 2. **The term language and the evaluator**, for level 1 and for level-0
    tools of more than one action. Gate: a first workflow that needs
    composition. Nick chose **CAM's circumstances report** (22 Nov): it reads
@@ -383,18 +435,24 @@ In agent_loop, no deploy. It passes only if each of these behaves as stated:
 8. A driver result over its bound is never a core value; no fetched bytes in
    the record.
 9. A refusal ends the call, and the model sees it.
-10. A dispatched-but-unrecorded proposal: re-dispatched under the same place
-    to a destination that honours it; halts as unknown for one that doesn't.
+10. An Allow with no outcome after it: re-dispatched for a program that's
+    safe to repeat (`read`, `fetch`, `write`, `model`); halts as unknown for
+    `start` and `make-web-requests`.
 11. A malformed definition (bad JSON, an unknown form or operation, a wrong
     argument count, a wrong argument type, a free variable, a computed
     record key, oversize): rejected with an error naming the place in the
     terms.
 12. A level-1 definition that names an action, carries `bound`, or calls a
-    level-1 tool: rejected. An input named like a bound value reads the
-    input; `["bound", …]` still reads the bound value.
+    level-1 tool: rejected. `["input", "drive"]` and `["bound", "drive"]`
+    read different values; a literal `"$budget.docx"` stays literal.
 13. At level 0, `define_tool` isn't in the manifest.
 14. A call that halts after one `send`: its error result lists the `send`,
-    action 0, as done.
+    action 0, as ran. A call ended by a `Refused("sent 1 of 3")` reports
+    that reason verbatim, never "did not run".
+18. A reference produced on another trajectory's chain: the read is
+    refused.
+19. Input that doesn't match `input_schema`: rejected before any step, by
+    the checker `Input.parse` rebuilt from the schema.
 15. A value past the depth cap, a call past the allocation cap, a call past
     the cap on terms evaluated: each halts, and the loop stays responsive.
 16. `substring` out of range halts; `prefix` past the end returns the whole
@@ -425,12 +483,17 @@ In agent_loop, no deploy. It passes only if each of these behaves as stated:
 - **agent_loop** (this session): the term language spec, the operation
   table, checker and evaluator; replay by place; the `define_tool` path; the
   manifest; the canonical rendering for review.
-- **is_tools_api / is_tool** (tool-af): a definition with `bound` and
-  `steps`, sent over the wire by modules; `ToolHandler` retired.
+- **is_tools_api** (tool-af, or a session in tools_api; Nick's call):
+  `Input.parse(schema)` first; then, beside `ToolSpec`, the stage-1
+  definition with `bound` and exactly typed steps. The stage-2 term
+  language gets its own package, which modules write and the loop and the
+  review renderer read; the definition likely moves into it.
+- **is_tool** (tool-af): `ToolHandler` retired once documents_module has
+  moved, not before (documents_module depends on is_tool ^0.4.0).
 - **is_airlock_api / airlock** (airlock-api-b3, airlock-5c): the place as
-  (turn, intent, action); dispatch states, idempotency by place, unknown
-  outcomes and which destinations may re-dispatch, refusals and failures
-  ending the call, references between drivers, the level in the rules.
+  (turn, intent, action); "safe to repeat" on the closed program set;
+  the content-addressed store and the own-chain rule for references; the
+  `Refused` split (Nick's call); the level in the rules.
 - **docx driver** (docx-driver-ce): `readDocument` for stage 1;
   `docxToPassage`, bytes in by reference and a bounded passage out, for
   stage 2.
