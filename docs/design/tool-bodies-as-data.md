@@ -34,7 +34,7 @@ Mission → Trajectory → Turn → Intent → the tool's **Steps** → Action �
   like a standing order.
 - Only a tool's **result** reaches the model, or, if the call ends early,
   an error listing the actions already done. Values along the way stay in
-  the loop and the record.
+  the loop and the logbook.
 - An **action** is one proposal, which the airlock decides; each has exactly
   one **outcome**.
 - A **place** is an address, not a level: **(turn, intent, action)**, "the
@@ -205,7 +205,7 @@ The experiment's throwaway evaluator was about 250 lines of Dart.
 ### Effects, refusals, halts
 
 - `propose(action, args…)` proposes a declared action at the intent's next
-  action number; `next` returns there until its outcome is in the record
+  action number; `next` returns there until its outcome is in the logbook
   (see [A tool's steps are a pure function](#a-tools-steps-are-a-pure-function)). A given
   tool called from a level-1 tool proposes under the same intent,
   continuing its action numbers.
@@ -228,7 +228,7 @@ The experiment's throwaway evaluator was about 250 lines of Dart.
   **never as "did not run"**: is_effects' `Outcome` today is `Ran |
   Refused(why)`, and a `Refused` can follow partial work (a
   `make-web-requests` refused with "sent 1 of 3"). A retry is a new intent,
-  at a new place; the record doesn't stop it re-sending. That residue is
+  at a new place; the logbook doesn't stop it re-sending. That residue is
   the same as a model calling `send` twice by hand, and the airlock's rules
   are its bound. Accepted by Nick.
 - **Pending Nick's ruling:** airlock-api-b3 has put a split of `Refused`
@@ -252,7 +252,7 @@ call each other. `docxToPassage` (the docx driver) is a proposal like any
 other, whose reach names the hash, so the airlock sees and decides the
 read; it returns an already-bounded passage. A stranger's document is
 parsed only in a confined driver, never in the core, and never copied into
-the record.
+the logbook.
 
 **A trajectory may read a reference only if an outcome entry on its own
 chain produced it.** Otherwise one trajectory could read another's document
@@ -268,7 +268,7 @@ is empty or only whitespace sends nothing. The model never supplies the
 address: the reply tool's destination comes from the trajectory's start
 entry, and the airlock's path-prefix rule for the starting conversation is
 the boundary. If the reply itself is refused, the turn ends under the
-per-turn cap on tool calls and repeated refusals; the record shows why.
+per-turn cap on tool calls and repeated refusals; the logbook shows why.
 
 ## A tool's steps are a pure function
 
@@ -433,7 +433,7 @@ In agent_loop, no deploy. It passes only if each of these behaves as stated:
 7. `concat(s, s)` repeated past the string bound: halts, and the loop stays
    responsive.
 8. A driver result over its bound is never a core value; no fetched bytes in
-   the record.
+   the logbook.
 9. A refusal ends the call, and the model sees it.
 10. An Allow with no outcome after it: re-dispatched for a program that's
     safe to repeat (`read`, `fetch`, `write`, `model`); halts as unknown for
