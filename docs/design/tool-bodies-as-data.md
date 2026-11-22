@@ -313,11 +313,17 @@ replay mechanism.
   that place; a mismatch (a different version, a corrupted logbook entry) halts
   the call. There's no lookup by content, so two identical `send`s in one
   tool are two places, and both dispatch.
-- **One numbering, not two.** Today's `PlaceInTrajectory` is (turn, step),
-  where `step` counts proposals in a turn. It becomes (turn, intent,
-  action), owned by airlock-api-b3, so the logbook and the tool's steps
-  share one address. Open: where the loop's own proposals in a turn (the
-  model call, the reply from final text) sit, since no intent draws them.
+- **One numbering, not two.** is_airlock_api 0.15.0's `PlaceInTrajectory`
+  is sealed (Nick, 22 Nov 15:14; owned by airlock-api-b3), so every
+  proposal in a turn has a place and the two kinds can't be confused:
+  - `ProposedForAnIntent(turn, intent, action)`, written
+    `[turn, intent, action]`: an intent's actions, numbered from 0;
+  - `ProposedByTheLoop(turn, modelCall | reply)`, written
+    `[turn, "model-call"]` or `[turn, "reply"]`: the loop's own proposals.
+
+  Within a turn the order is the model call, then intents by (intent,
+  action), then the reply. 0.14's `[turn, step]` doesn't parse. There's no
+  Open card; Nick dropped it in the same ruling.
 - **Pinned per call:** the hash of the steps (bound values included), the
   operation table's version and the action library's version. A restart on
   different versions halts the call (an error result the model sees, not a
