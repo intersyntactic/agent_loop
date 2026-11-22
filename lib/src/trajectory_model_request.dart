@@ -1,5 +1,5 @@
 /// Records what a model call sends, before it is sent, on a
-/// [TrajectoryChain] (the live logbook record): one [ModelRequestPiece]
+/// [TrajectoryChain] (the live logbook): one [ModelRequestPiece]
 /// entry per text, then a [ModelRequest] entry naming each as a
 /// [RecordedText] and the turns it was built from.
 library;

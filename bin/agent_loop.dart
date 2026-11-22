@@ -1,9 +1,9 @@
 /// The loop's entry point: run as `agent-loop@<loop-user>`, one per
-/// trajectory, with no arguments beyond the two record sockets — the loop
+/// trajectory, with no arguments beyond the two logbook sockets — the loop
 /// itself gets no sign-in and no network of its own; the airlock makes the
 /// model call, under the model and sign-in the trajectory started under
 /// (its starting admission's rules, [startingModel]). It finds
-/// its own assignment in the record rather than being told its trajectory
+/// its own assignment in the logbook rather than being told its trajectory
 /// (infra's polkit can start only named template units, so loop_launcher
 /// can pass no per-trajectory argument), follows its trajectory's history
 /// live (the docking station's admissions and its own turn chain, merged),
@@ -63,7 +63,7 @@ Future<void> main(List<String> args) async {
   final options = _Options.parse(args);
   if (options == null) {
     stderr.writeln(
-      'usage: agent_loop --record-read <socket> --record-write <socket>',
+      'usage: agent_loop --logbook-read <socket> --logbook-write <socket>',
     );
     exitCode = 64; // EX_USAGE
     return;
@@ -72,10 +72,10 @@ Future<void> main(List<String> args) async {
   final loopUser = Process.runSync('id', ['-un']).stdout.toString().trim();
   stdout.writeln(
     'agent_loop: ready loopUser=$loopUser '
-    'read=${options.recordRead} write=${options.recordWrite}',
+    'read=${options.logbookRead} write=${options.logbookWrite}',
   );
 
-  final reader = LogbookReader(options.recordRead);
+  final reader = LogbookReader(options.logbookRead);
   final ObjectId root;
   try {
     root = await findTrajectoryRoot(reader, loopUser: loopUser);
@@ -86,7 +86,7 @@ Future<void> main(List<String> args) async {
   }
   stdout.writeln('agent_loop: assigned root=${root.hex}');
 
-  final writer = LogbookWriter(options.recordWrite);
+  final writer = LogbookWriter(options.logbookWrite);
   final turnKind = Kind.parse(_turnKind)!;
   final chain = TrajectoryChain.resumed(
     writer: writer,
@@ -267,26 +267,28 @@ Future<void> main(List<String> args) async {
 }
 
 final class _Options {
-  const _Options({required this.recordRead, required this.recordWrite});
+  const _Options({required this.logbookRead, required this.logbookWrite});
 
-  final String recordRead;
-  final String recordWrite;
+  final String logbookRead;
+  final String logbookWrite;
 
+  /// Reads `--logbook-read` and `--logbook-write`. The `--record-*` spellings
+  /// are accepted for one release, while infra's units move to the new ones.
   static _Options? parse(List<String> args) {
-    String? recordRead;
-    String? recordWrite;
+    String? logbookRead;
+    String? logbookWrite;
     for (var i = 0; i < args.length; i++) {
       switch (args[i]) {
-        case '--record-read' when i + 1 < args.length:
-          recordRead = args[++i];
-        case '--record-write' when i + 1 < args.length:
-          recordWrite = args[++i];
+        case '--logbook-read' || '--record-read' when i + 1 < args.length:
+          logbookRead = args[++i];
+        case '--logbook-write' || '--record-write' when i + 1 < args.length:
+          logbookWrite = args[++i];
         default:
           return null;
       }
     }
-    return recordRead != null && recordWrite != null
-        ? _Options(recordRead: recordRead, recordWrite: recordWrite)
+    return logbookRead != null && logbookWrite != null
+        ? _Options(logbookRead: logbookRead, logbookWrite: logbookWrite)
         : null;
   }
 }

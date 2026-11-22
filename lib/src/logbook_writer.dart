@@ -5,7 +5,7 @@
 /// Keeps the same shape [JournalWriter] exposes (an [ObjectId] back, or a
 /// thrown failure) rather than `is_logbook_client`'s own result-returning
 /// [WriteResult], so [TrajectoryChain] can call either without caring which
-/// record service it is writing to.
+/// logbook service it is writing to.
 library;
 
 import 'package:is_logbook_client/is_logbook_client.dart' as client;
