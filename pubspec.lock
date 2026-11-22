@@ -157,10 +157,10 @@ packages:
     dependency: "direct main"
     description:
       name: is_admission_vocabulary
-      sha256: bec737e48523e6fe11585d910a0e061c1b650fdc300f969ec64fcd7cad21f888
+      sha256: d5f4943ecbec5adde90543e375e1111aa93f3bcd9d6e987af2a80db922d81991
       url: "https://pub.dev"
     source: hosted
-    version: "0.1.0"
+    version: "0.2.0"
   is_airlock_api:
     dependency: "direct main"
     description:
@@ -210,21 +210,29 @@ packages:
     source: hosted
     version: "0.3.0"
   is_logbook:
-    dependency: "direct main"
+    dependency: "direct dev"
     description:
       name: is_logbook
-      sha256: b1b848bb127e2453508dced234c298a95013a3fee56911cb98ddd750715b9e31
+      sha256: "3f00448cd4f3d1de9d18b338482f957e04174b63b2104c6b66be9c0b9cad721e"
       url: "https://pub.dev"
     source: hosted
-    version: "0.2.1"
+    version: "0.3.1"
   is_logbook_client:
     dependency: "direct main"
     description:
       name: is_logbook_client
-      sha256: "885f9e932fc058e8aa05cf75b3be3e48ca0618c1d9023586aec3e0c41ad31ce3"
+      sha256: aff53c968e53c1b707305adeb212bd700ca0c231fa1caee4774b5db52f8cc4b0
       url: "https://pub.dev"
     source: hosted
-    version: "0.2.0"
+    version: "0.3.0"
+  is_logbook_format:
+    dependency: transitive
+    description:
+      name: is_logbook_format
+      sha256: "5ec58c64f526653f1447d3cde7266d2d0b5d083fccaf0362f0de8effab611747"
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.1.0"
   is_path_confinement:
     dependency: transitive
     description:
@@ -241,6 +249,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "0.6.0"
+  is_unix_socket_user_check:
+    dependency: transitive
+    description:
+      name: is_unix_socket_user_check
+      sha256: "85e99f8a46d1c6e3d697e57ac62c5b784f257f283c1ff56f627c70926e976b9b"
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.1.0"
   lints:
     dependency: "direct dev"
     description:
