@@ -87,7 +87,7 @@ struggles", not "proven".
 
 ```
 module or model sends terms ──► checked (JSON, forms, ops, types, sizes) ──► recorded ──► carried out in the loop
-                                                                            (the steps)    pure values here;
+                                                                            (the steps)    computation steps here;
                                                                                            each action = a proposal
 ```
 
