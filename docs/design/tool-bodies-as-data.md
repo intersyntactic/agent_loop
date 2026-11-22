@@ -402,6 +402,10 @@ In agent_loop, no deploy. It passes only if each of these behaves as stated:
   fits; ours stays if CEL can't be sent as JSON or run from Dart.
 - **Dhall**: pure and total, every program ends. Likely heavier than we
   need.
+- **Lean**, not as the tool language (its elaborator runs arbitrary code,
+  so loading untrusted Lean has effects) but to **prove the evaluator**:
+  replay, soundness of the checker, level 1's reach, refusals ending the
+  call, and the caps. See [proving-the-evaluator.md](proving-the-evaluator.md).
 
 ## Who does what (once agreed)
 
