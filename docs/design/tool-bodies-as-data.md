@@ -160,10 +160,17 @@ propose actions), and recursion can't be written.
 - **Sizes are bounded at construction:** each string at most 64 KiB; each
   list at most 1,000 elements; each value at most 256 KiB serialized and 16
   deep, counting shared parts every time they appear; integers within
-  ±2^53; a tool's steps at most 64 KiB of JSON. Per call: at most 4 MiB
-  allocated in total and at most 10,000 terms evaluated. Exceeding any of
-  these halts the call. So `s = concat(s, s)` repeated, or a list of lists of
-  a shared string, can't run away.
+  ±2^53; a tool's steps at most 64 KiB of JSON and **64 terms deep**,
+  rejected at definition (without the depth cap, 64 KiB of `[[[[…` nests
+  about 32,000 deep and could run a recursive checker out of stack). Per
+  call: at most 4 MiB allocated in total and at most 10,000 terms
+  evaluated. Exceeding any of these halts the call. So `s = concat(s, s)`
+  repeated, or a list of lists of a shared string, can't run away.
+- **Against the experiment's 25 tools** (written by models, 22 Nov
+  measurement): at most 1,470 bytes (median 657), 15 terms deep (median
+  10), 149 terms (median 71) and 6 proposals (median 3). A replayed call
+  with 6 proposals evaluates at most about 900 terms. Every cap has at least
+  4× headroom over what real tools used.
 
 ### The operation table is defined once
 
@@ -347,8 +354,11 @@ read the clock, so it would undo every property above.)
    reaches the model, so none can be forged or forwarded. This serves CAM
    now, and a module written against it keeps working in stage 2.
 2. **The term language and the evaluator**, for level 1 and for level-0
-   tools of more than one action. Gate: a first workflow, chosen with Nick,
-   that needs composition.
+   tools of more than one action. Gate: a first workflow that needs
+   composition. Nick chose **CAM's circumstances report** (22 Nov): it reads
+   outside case data and posts a card or document to Teams. Its exact steps
+   are being gathered; the evaluator is built against them, not against
+   made-up examples.
 
 The tool-call text format, `<tool_call>{"name", "input"}</tool_call>`
 (agent_loop branch `feat/tool-calls-as-text`), serves both stages. In stage 2
@@ -394,12 +404,15 @@ In agent_loop, no deploy. It passes only if each of these behaves as stated:
 
 ## Leads to check before building stage 2
 
-- **CEL** (Google's Common Expression Language): pure, not Turing-complete,
-  cost-bounded, built to evaluate untrusted expressions in policy engines
-  such as Kubernetes admission. Close to our computation steps. Unchecked:
-  whether a maintained Dart implementation exists, and whether models write
-  it as reliably as JSON terms. A mature language should win over ours if it
-  fits; ours stays if CEL can't be sent as JSON or run from Dart.
+- **CEL** (Google's Common Expression Language), **checked 22 Nov: ours
+  stays.** pub.dev's `cel` (0.6.1, Oct 2026, https://github.com/atn832/cel-dart)
+  is maintained and widely downloaded, but it's "a simplified port of
+  cel-go" that skips cel-go's type checking: type errors are thrown at
+  evaluation, where our checker rejects them at definition. It names no
+  cost bound. CEL is text, so a third-party parser would read every
+  module's and model's steps; and it has no notion of effects, so `propose`
+  and sequencing would stay ours, with two languages in one tool. CEL fits
+  as a policy expression; it doesn't fit as a tool's steps.
 - **Dhall**: pure and total, every program ends. Likely heavier than we
   need.
 - **Lean**, not as the tool language (its elaborator runs arbitrary code,
