@@ -9,7 +9,7 @@ import 'dart:convert' show jsonEncode, utf8;
 import 'package:is_airlock_api/is_airlock_api.dart'
     show ModelRequest, ModelRequestPiece, RecordedText;
 import 'package:is_content_id/is_content_id.dart' show ObjectId;
-import 'package:is_logbook/service.dart' show Kind;
+import 'package:is_logbook_client/is_logbook_client.dart' show Kind;
 import 'package:is_logbook_client/is_logbook_client.dart'
     as logbook_client
     show ObjectId;

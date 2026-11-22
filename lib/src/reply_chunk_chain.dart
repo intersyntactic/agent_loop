@@ -17,8 +17,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
-import 'package:is_logbook/service.dart' show Kind;
-import 'package:is_logbook_client/is_logbook_client.dart' show ObjectId;
+import 'package:is_logbook_client/is_logbook_client.dart' show Kind, ObjectId;
 
 import 'logbook_writer.dart';
 

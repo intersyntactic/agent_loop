@@ -9,8 +9,7 @@
 library;
 
 import 'package:is_logbook_client/is_logbook_client.dart' as client;
-import 'package:is_logbook_client/is_logbook_client.dart' show ObjectId;
-import 'package:is_logbook/service.dart' show Kind;
+import 'package:is_logbook_client/is_logbook_client.dart' show Kind, ObjectId;
 
 /// Either the entry's fate is unknown, so resending it blindly could write
 /// it twice ([LogbookWriteUncertain]), or nothing was added at all, so

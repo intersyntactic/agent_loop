@@ -7,9 +7,8 @@ import 'dart:async';
 import 'dart:convert' show utf8;
 
 import 'package:checked_json/checked_json.dart' show JsonObject;
-import 'package:is_logbook/service.dart' show Kind;
 import 'package:is_logbook_client/is_logbook_client.dart'
-    show CaughtUp, Entry, LogbookReader, ObjectId;
+    show CaughtUp, Entry, Kind, LogbookReader, ObjectId;
 
 import 'logbook_writer.dart';
 import 'turn_envelope.dart';

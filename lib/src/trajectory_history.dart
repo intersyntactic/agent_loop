@@ -29,9 +29,8 @@ import 'package:is_admission_vocabulary/is_admission_vocabulary.dart'
         decodeDecision;
 import 'package:checked_json/checked_json.dart' show JsonObject;
 import 'package:is_flight_rules/is_flight_rules.dart' show FlightRules;
-import 'package:is_logbook/service.dart' show Kind;
 import 'package:is_logbook_client/is_logbook_client.dart'
-    show CaughtUp, Entry, LogbookReader, ObjectId;
+    show CaughtUp, Entry, Kind, LogbookReader, ObjectId;
 import 'package:is_effects/is_effects.dart'
     show
         CutOffReply,

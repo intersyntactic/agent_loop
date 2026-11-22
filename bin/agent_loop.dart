@@ -45,9 +45,8 @@ import 'package:is_airlock_api/is_airlock_api.dart'
         RefusalNoticeToEvent,
         Result,
         TrajectoryOpened;
-import 'package:is_logbook/service.dart' show Kind;
 import 'package:is_logbook_client/is_logbook_client.dart'
-    show LogbookReader, ObjectId;
+    show Kind, LogbookReader, ObjectId;
 import 'package:is_shapes/is_shapes.dart' show EntryId;
 
 /// Until the tool-intent-as-text design lands (task 10), a fixed, labelled
