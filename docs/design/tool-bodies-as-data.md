@@ -409,8 +409,16 @@ read the clock, so it would undo every property above.)
    Nothing delivers tools to the loop today (documents_module's
    `ToolHandler`s run nowhere), so there's nothing to migrate but
    documents_module.
-   Open: in stage 1, who turns an action's outcome into the text the model
-   reads (today `Output<O>.forModel`): the driver's action, or the loop?
+   **The driver's action renders the text the model reads** (today
+   `Output<O>.forModel`), so the loop builds in no module code. The loop
+   adds only one uniform frame around every result, naming the tool and
+   marking where the result's text begins and ends. The frame is generic,
+   not module code, so a stranger's document text always arrives marked as
+   a result, whatever format its driver chose. The model's exact view is
+   recorded either way: the loop records every model request's rendered
+   text before it's sent (`recordModelRequestOnTrajectory`). Cost: each
+   action picks its own body format. (Proposed by tool-af, 22 Nov; the
+   frame added here; Nick can overrule.)
 2. **The term language and the evaluator**, for level 1 and for level-0
    tools of more than one action. Gate: a first workflow that needs
    composition. Nick chose **CAM's case review report** (22 Nov): it reads
@@ -489,7 +497,9 @@ In agent_loop, no deploy. It passes only if each of these behaves as stated:
 - **agent_loop** (this session): the term language spec, the operation
   table, checker and evaluator; replay by place; the `define_tool` path; the
   manifest; the canonical rendering for review.
-- **is_tools_api** (tool-af, or a session in tools_api; Nick's call):
+- **is_tools_api** (a session in tools_api, Nick's decision 22 Nov; its
+  brief is
+  `~/.claude/projects/-Users-nick-git-orgs-intersyntactic-tools-api/handover/2026-11-22T15-30-00.md`):
   `Input.parse(schema)` first; then, beside `ToolSpec`, the stage-1
   definition with `bound` and exactly typed steps. The stage-2 term
   language gets its own package, which modules write and the loop and the
