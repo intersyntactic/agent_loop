@@ -56,7 +56,7 @@ final class TrajectoryCrux implements ProposesActionsThroughTheRecord {
       onDone: () {
         for (final waiting in _waiting.values) {
           waiting.completeError(
-            StateError("the record's result entries ended first"),
+            StateError("the logbook's result entries ended first"),
           );
         }
         _waiting.clear();

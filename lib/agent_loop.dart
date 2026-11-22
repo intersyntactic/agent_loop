@@ -3,7 +3,7 @@
 /// conversation's turns straight to the logbook.
 ///
 /// [TrajectoryChain] is one trajectory's sequence of turns, written to the
-/// logbook (the live record service, `is_logbook`), each in a
+/// logbook (the live logbook service, `is_logbook`), each in a
 /// [TurnEnvelope] naming its [TurnProvenance] — a turn's own id is its
 /// logbook entry hash, read back as that same id, not a second name derived
 /// from it. [findTrajectoryRoot] and [followTrajectory] are its read side.
@@ -19,7 +19,7 @@
 /// [recordModelRequestOnTrajectory] is the write side of a model call as an
 /// action: it records the exact rendered body as pieces, then a request
 /// naming them, before the airlock ever sees it, so the airlock's own
-/// record of what the step sent can point at it by hash rather than
+/// logbook entry for what the step sent can point at it by hash rather than
 /// duplicate it. [encodeModelInput] writes a request's turns as the JSON
 /// array of input items every model driver takes.
 library;

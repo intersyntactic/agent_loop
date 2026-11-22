@@ -1,5 +1,5 @@
 /// A trajectory's own chain of turns, written to the logbook (the live
-/// record service, is_logbook): each trajectory's own agent loop writes
+/// logbook service, is_logbook): each trajectory's own agent loop writes
 /// its conversation turns directly.
 library;
 
