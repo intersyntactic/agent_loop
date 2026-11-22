@@ -11,9 +11,8 @@ import 'dart:convert' show utf8;
 
 import 'package:is_airlock_api/is_airlock_api.dart'
     show outcomeOfProposedActionKind, readOutcomeOfProposedAction;
-import 'package:is_logbook/service.dart' show Kind;
 import 'package:is_logbook_client/is_logbook_client.dart'
-    show Entry, LogbookReader;
+    show Entry, Kind, LogbookReader;
 import 'package:is_shapes/is_shapes.dart' show EntryId;
 
 import 'trajectory_crux.dart';

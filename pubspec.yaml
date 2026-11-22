@@ -15,13 +15,14 @@ dependencies:
   is_content_id: ^0.2.0
   is_conversation_shapes: ^0.8.3
   is_admission_vocabulary: ^0.1.0
-  is_logbook: ^0.2.1
-  is_logbook_client: ^0.2.0
+  is_logbook_client: ^0.3.0
   is_shapes: ^0.6.0
   is_airlock_api: ^0.14.0
   is_effects: ^0.12.0
   is_flight_rules: ^0.3.0
 
 dev_dependencies:
+  # Tests start a real LogbookService; nothing outside test/ may import it.
+  is_logbook: ^0.3.1
   lints: ^6.1.0
   test: ^1.33.0
