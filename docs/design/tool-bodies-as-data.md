@@ -21,13 +21,17 @@ the airlock.
 Mission → Trajectory → Turn → Intent → the tool's **Steps** → Action ⇄ Outcome
 
 - An **intent** is one tool call in the model's reply.
-- A tool's **steps** are what it does when called. A step is either a
-  **proposal**, which becomes an action, or a **pure value** worked out on
-  the way to one (`concat`, `if`, `get`). Only proposals reach the airlock.
-- **The loop computes, but has no effects.** It works out pure values
-  itself, as it already parses replies and builds prompts; anything that
-  touches the world is a proposal. A pure value has nothing for the airlock
-  to decide, and replay derives it again identically.
+- A tool's **steps** are what it does when called, of two kinds. An
+  **effect step** is a `propose`, which becomes an action. A **computation
+  step** works out a value on the way to one (`concat`, `if`, `get`). Only
+  effect steps reach the airlock.
+- **The loop computes, but has no effects.** It carries out computation
+  steps itself, as it already parses replies and builds prompts; anything
+  that touches the world is an effect step. A computation step has nothing
+  for the airlock to decide, and replay works it out again identically.
+- **The model decides between intents, never inside one.** Every decision
+  inside a tool (an `if`) was made in advance by whoever wrote the steps,
+  like a standing order.
 - Only a tool's **result** reaches the model, or, if the call ends early,
   an error listing the actions already done. Values along the way stay in
   the loop and the record.
@@ -55,6 +59,7 @@ Mission → Trajectory → Turn → Intent → the tool's **Steps** → Action �
   **steps**, not "body", which pointed at code that executes (22 Nov).
 - "The loop only knows tools" means **no effects in the loop**, not no
   computation (22 Nov).
+- A purely functional language for computation (22 Nov).
 
 ## Evidence: the model writes terms reliably
 
@@ -173,7 +178,8 @@ The experiment's throwaway evaluator was about 250 lines of Dart.
 ### Effects, refusals, halts
 
 - `propose(action, args…)` proposes a declared action at the intent's next
-  action number and suspends until its outcome is in the record. A given
+  action number; `next` returns there until its outcome is in the record
+  (see [A tool's steps are a pure function](#a-tools-steps-are-a-pure-function)). A given
   tool called from a level-1 tool proposes under the same intent,
   continuing its action numbers.
 - **Steps can't branch on a refusal or a failure.** An airlock refusal or a
@@ -222,18 +228,49 @@ entry, and the airlock's path-prefix rule for the starting conversation is
 the boundary. If the reply itself is refused, the turn ends under the
 per-turn cap on tool calls and repeated refusals; the record shows why.
 
+## A tool's steps are a pure function
+
+The language is purely functional, `propose` included. A tool's steps mean
+one function:
+
+```
+next(input, outcomes so far)  →  Propose(action, args)  |  Return(value)  |  Fail(message)
+```
+
+`propose` isn't an effect inside an expression. The k-th `propose` the
+steps reach reads outcome k from the list; if the list has no outcome k yet,
+`next` stops there and returns `Propose(action, args)`. The surface syntax
+is unchanged: `propose` still sits inside `let`, as the models wrote it.
+
+The loop's whole job for a call:
+
+1. `next(input, [])` → `Propose(fetch, …)`; record it at (turn, intent, 0).
+2. Its outcome o₀ is recorded → `next(input, [o₀])` →
+   `Propose(docxToPassage, …)` at (turn, intent, 1).
+3. o₁ is recorded → `next(input, [o₀, o₁])` → `Return(text)`, the intent's
+   result.
+
+Nothing is suspended or saved between outcomes: each one calls `next` from
+the start. With 2 to 5 effects per tool and microsecond operations, the
+repeated work (about n²/2) is negligible, and the cap on terms evaluated
+bounds it. This is how Temporal and Durable Functions run workflows,
+replaying deterministic code against a history of results; there the
+purity is a convention, here the language can't express anything else.
+
 ## Replay
 
-A restarted loop carries out a call's recorded steps again with its recorded
-arguments.
+Replay is calling `next` again with the recorded outcomes. Because it is a
+function, a restart gets the same next proposal; there is no separate
+replay mechanism.
 
 - **Identity is the place: (turn, intent, action).** The intent's number is
   fixed once the model's reply is recorded, which happens before its steps
   propose anything, so a restart recovers it unchanged. Each proposal is
-  stored at its place. Carrying the steps out again derives each proposal
-  again and requires it to **equal** the stored one; a mismatch halts the
-  call. There's no lookup by content, so two identical `send`s in one tool
-  are two places, and both dispatch.
+  stored at its place. A restart calls `next` with the outcomes recorded so
+  far and requires each proposal it returns to **equal** the one stored at
+  that place; a mismatch (a different version, a corrupted record) halts
+  the call. There's no lookup by content, so two identical `send`s in one
+  tool are two places, and both dispatch.
 - **One numbering, not two.** Today's `PlaceInTrajectory` is (turn, step),
   where `step` counts proposals in a turn. It becomes (turn, intent,
   action), owned by airlock-api-b3, so the logbook and the tool's steps
@@ -322,7 +359,8 @@ a model-written definition arrives through a `define_tool` call.
 In agent_loop, no deploy. It passes only if each of these behaves as stated:
 
 1. Happy path: `read_document` and a `send` workflow are carried out against
-   an in-memory crux, suspending and resuming at each action.
+   an in-memory crux, one `next` call per outcome. `next` is also tested
+   alone: a list of outcomes in, one step out, no fakes.
 2. Kill after the first action; carry out again; only the second is proposed.
 3. Two identical `send`s in one tool: two places, both dispatch; a crash
    between them resumes at the second.
@@ -353,6 +391,17 @@ In agent_loop, no deploy. It passes only if each of these behaves as stated:
     string.
 17. The model's spec text, the review labels and the checker's signatures
     are generated from the one operation table.
+
+## Leads to check before building stage 2
+
+- **CEL** (Google's Common Expression Language): pure, not Turing-complete,
+  cost-bounded, built to evaluate untrusted expressions in policy engines
+  such as Kubernetes admission. Close to our computation steps. Unchecked:
+  whether a maintained Dart implementation exists, and whether models write
+  it as reliably as JSON terms. A mature language should win over ours if it
+  fits; ours stays if CEL can't be sent as JSON or run from Dart.
+- **Dhall**: pure and total, every program ends. Likely heavier than we
+  need.
 
 ## Who does what (once agreed)
 
