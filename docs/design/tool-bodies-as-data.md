@@ -310,7 +310,7 @@ replay mechanism.
   propose anything, so a restart recovers it unchanged. Each proposal is
   stored at its place. A restart calls `next` with the outcomes recorded so
   far and requires each proposal it returns to **equal** the one stored at
-  that place; a mismatch (a different version, a corrupted record) halts
+  that place; a mismatch (a different version, a corrupted logbook entry) halts
   the call. There's no lookup by content, so two identical `send`s in one
   tool are two places, and both dispatch.
 - **One numbering, not two.** Today's `PlaceInTrajectory` is (turn, step),
