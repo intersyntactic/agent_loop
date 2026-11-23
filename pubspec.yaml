@@ -3,7 +3,7 @@ description: >-
   Each trajectory's own agent loop: it writes conversation turns straight
   to the logbook (RULINGS), and answers through the airlock by reference,
   knowing no external system.
-version: 0.1.2
+version: 0.1.3
 repository: https://github.com/intersyntactic/agent_loop
 publish_to: none
 
@@ -14,7 +14,7 @@ dependencies:
   checked_json: ^0.2.1
   is_content_id: ^0.2.0
   is_conversation_shapes: ^0.8.3
-  is_admission_vocabulary: ^0.2.0
+  is_admission_vocabulary: ^0.3.0
   is_logbook_client: ^0.3.0
   is_shapes: ^0.6.0
   is_airlock_api: ^0.14.0
