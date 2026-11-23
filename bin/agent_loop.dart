@@ -15,12 +15,13 @@
 /// restarted loop's next turn follows the latest place in its history.
 ///
 /// A reply is two actions ([replyActions]): run the program named by
-/// `--reply-builder`, such as teams_module's `teams-message`, which builds
-/// the message's requests, then send exactly those. They go to the reply
+/// `--reply-translator`, such as teams_module's `teams-reply-translator`,
+/// which translates the reply into its system's requests, then send exactly
+/// those. They go to the reply
 /// endpoint the trajectory's starting admission recorded, as the sign-in
 /// its rules' reply grant goes as ([WhatMayLeaveThisMachine.signInForReply]),
 /// so the loop knows no external system, and the airlock decides where each
-/// request goes. Without a builder, an endpoint or a sign-in, nothing is
+/// request goes. Without a translator, an endpoint or a sign-in, nothing is
 /// sent and the loop says why.
 ///
 /// When the model call is refused, the turn's reply says why, so its sender
@@ -55,7 +56,7 @@ Future<void> main(List<String> args) async {
   if (options == null) {
     stderr.writeln(
       'usage: agent_loop --logbook-read <socket> --logbook-write <socket> '
-      '[--reply-builder <program>]',
+      '[--reply-translator <program>]',
     );
     exitCode = 64; // EX_USAGE
     return;
@@ -65,7 +66,7 @@ Future<void> main(List<String> args) async {
   stdout.writeln(
     'agent_loop: ready loopUser=$loopUser '
     'read=${options.logbookRead} write=${options.logbookWrite} '
-    'replyBuilder=${options.replyBuilder?.name ?? 'none'}',
+    'replyTranslator=${options.replyTranslator?.name ?? 'none'}',
   );
 
   final reader = LogbookReader(options.logbookRead);
@@ -100,13 +101,13 @@ Future<void> main(List<String> args) async {
     String what, {
     ModelUsage? usage,
   }) async {
-    final builder = options.replyBuilder;
+    final translator = options.replyTranslator;
     final started = history.whereType<TrajectoryStarted>().firstOrNull;
     final endpoint = started?.replyEndpoint;
-    if (builder == null || started == null || endpoint == null) {
+    if (translator == null || started == null || endpoint == null) {
       stderr.writeln(
         'agent_loop: $what not sent: '
-        '${builder == null ? 'no --reply-builder' : 'no reply endpoint'}',
+        '${translator == null ? 'no --reply-translator' : 'no reply endpoint'}',
       );
       return;
     }
@@ -124,7 +125,7 @@ Future<void> main(List<String> args) async {
     stdout.writeln('agent_loop: proposing the $what at turn $turn');
     final sent = await runToEnd(
       replyActions(
-        builder: builder,
+        translator: translator,
         text: text,
         usage: usage,
         replyEndpoint: endpoint,
@@ -234,31 +235,31 @@ final class _Options {
   const _Options({
     required this.logbookRead,
     required this.logbookWrite,
-    required this.replyBuilder,
+    required this.replyTranslator,
   });
 
   final String logbookRead;
   final String logbookWrite;
 
-  /// The program that builds a reply's requests, run through the airlock's
-  /// program driver; null sends no replies.
-  final Executable? replyBuilder;
+  /// The program that translates a reply into its system's requests, run
+  /// through the airlock's program driver; null sends no replies.
+  final Executable? replyTranslator;
 
   /// Reads `--logbook-read`, `--logbook-write` and, optionally,
-  /// `--reply-builder`.
+  /// `--reply-translator`.
   static _Options? parse(List<String> args) {
     String? logbookRead;
     String? logbookWrite;
-    ProgramName? replyBuilder;
+    ProgramName? replyTranslator;
     for (var i = 0; i < args.length; i++) {
       switch (args[i]) {
         case '--logbook-read' when i + 1 < args.length:
           logbookRead = args[++i];
         case '--logbook-write' when i + 1 < args.length:
           logbookWrite = args[++i];
-        case '--reply-builder' when i + 1 < args.length:
-          replyBuilder = ProgramName.parse(args[++i]);
-          if (replyBuilder == null) return null;
+        case '--reply-translator' when i + 1 < args.length:
+          replyTranslator = ProgramName.parse(args[++i]);
+          if (replyTranslator == null) return null;
         default:
           return null;
       }
@@ -267,9 +268,9 @@ final class _Options {
         ? _Options(
             logbookRead: logbookRead,
             logbookWrite: logbookWrite,
-            replyBuilder: replyBuilder == null
+            replyTranslator: replyTranslator == null
                 ? null
-                : Executable(replyBuilder),
+                : Executable(replyTranslator),
           )
         : null;
   }
