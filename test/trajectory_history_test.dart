@@ -20,13 +20,16 @@ import 'package:is_airlock_api/is_airlock_api.dart'
         outcomeOfProposedActionToJson;
 import 'package:is_effects/is_effects.dart'
     show
+        AddressPrefix,
         CutOffReply,
         FinishedReply,
         ModelAndSignIn,
         ModelName,
         ModelReply,
         ModelSignInName,
+        Origin,
         Outcome,
+        PathPrefix,
         Ran,
         Refused,
         encodeModelReply,
@@ -112,9 +115,10 @@ void main() {
     final admission = EventAdmittedToMission(
       rawEventEntry,
       by: DecidedBy.rules,
-      reading: MessageSaid(
+      translatedEvent: MessageSaid(
         addressInExternalSystem: AddressInExternalSystem.parse('teams:c1')!,
         containingAddress: null,
+        replyEndpoint: null,
         key: EventKey.parse('k1')!,
         addressedTo: ActorId.parse('teams:cam')!,
         node: UserSaid(
@@ -183,6 +187,12 @@ void main() {
       programsNetwork: ProgramsNetwork.values.first,
     );
 
+    // Where every admitted message says replies go.
+    final endpoint = AddressPrefix.of(
+      Origin.parse('https://smba.trafficmanager.net')!,
+      PathPrefix.parse('/amer/v3/conversations/c1/')!,
+    );
+
     // Writes an admission of [text], starting a new trajectory and mission
     // under [rules] when they are given, and returns everything the feed
     // then hands on.
@@ -208,11 +218,12 @@ void main() {
           EventAdmittedToMission(
             (raw as client.Written).entry,
             by: DecidedBy.rules,
-            reading: MessageSaid(
+            translatedEvent: MessageSaid(
               addressInExternalSystem: AddressInExternalSystem.parse(
                 'teams:c1',
               )!,
               containingAddress: null,
+              replyEndpoint: endpoint,
               key: EventKey.parse('k$i')!,
               addressedTo: null,
               node: UserSaid(
@@ -256,6 +267,10 @@ void main() {
         [TrajectoryStarted, SaidByUser, SaidByUser],
       );
       expect(startingModel(found).model, claude);
+      // The start carries where replies go, and the trajectory's own id.
+      final started = found.first as TrajectoryStarted;
+      expect(started.replyEndpoint, endpoint);
+      expect(started.trajectory.hex, started.hash.hex);
       // The rules are not part of the conversation.
       expect(jsonDecode(encodeModelInput(trajectoryInput(found))), [
         {'role': 'user', 'content': 'first'},

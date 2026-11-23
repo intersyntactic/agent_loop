@@ -1,9 +1,9 @@
 name: agent_loop
 description: >-
   Each trajectory's own agent loop: it writes conversation turns straight
-  to the logbook (RULINGS), and answers through the airlock by reference,
-  knowing no external system.
-version: 0.2.0
+  to the logbook (RULINGS), and replies through the airlock with the
+  requests a program it is given builds, knowing no external system.
+version: 0.3.0
 repository: https://github.com/intersyntactic/agent_loop
 publish_to: none
 
@@ -14,11 +14,11 @@ dependencies:
   checked_json: ^0.2.1
   is_content_id: ^0.2.0
   is_conversation_shapes: ^0.8.3
-  is_docking_station_api: ^0.3.0
+  is_docking_station_api: ^0.4.0
   is_logbook_client: ^0.3.0
   is_shapes: ^0.6.0
   is_airlock_api: ^0.17.0
-  is_effects: ^0.14.0
+  is_effects: ^0.14.2
   is_flight_rules: ^0.5.0
 
 dev_dependencies:

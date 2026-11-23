@@ -241,10 +241,14 @@ Stream<TrajectoryFeedItem> followTrajectoryHistory(
       if (decision case EventAdmittedToMission(
         placement: StartsTrajectory(),
         rules: final rules?,
+        :final replyEndpoint,
       ))
-        _startedUnder(entry.id, rules),
+        _startedUnder(entry.id, rules, replyEndpoint),
       if (decision case EventAdmittedToMission(
-        reading: MessageSaid(:final node, :final addressInExternalSystem),
+        translatedEvent: MessageSaid(
+          :final node,
+          :final addressInExternalSystem,
+        ),
         :final startsTurn,
       ))
         SaidByUser(
@@ -258,14 +262,19 @@ Stream<TrajectoryFeedItem> followTrajectoryHistory(
   });
 }
 
-/// The admission [hash] started this trajectory under [rules]: read once,
-/// strictly, as [FlightRules].
-TrajectoryEvent _startedUnder(ObjectId hash, JsonObject rules) {
+/// The admission [hash] started this trajectory under [rules], with replies
+/// going to [replyEndpoint]: the rules read once, strictly, as
+/// [FlightRules].
+TrajectoryEvent _startedUnder(
+  ObjectId hash,
+  JsonObject rules,
+  AddressPrefix? replyEndpoint,
+) {
   try {
     return TrajectoryStarted(
       hash: hash,
       rules: FlightRules.fromJson(rules),
-      replyEndpoint: null,
+      replyEndpoint: replyEndpoint,
     );
   } on FormatException catch (e) {
     return TrajectoryRulesUnreadable(hash: hash, why: e.message);
