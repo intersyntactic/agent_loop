@@ -10,41 +10,33 @@
 /// and, whenever the turn rule says the agent should answer, records a
 /// model request and proposes [AskTheModel] through its crux, naming it.
 ///
-/// Each answer is one turn, counted from 0, with one crux for the turn: the
-/// model call is its step 0 and the answer its step 1, so a proposal's
-/// place is `[turn, step]`. A restarted loop's next turn follows the latest
-/// place in its history.
+/// Each answer is one turn, counted from 0: its model call through
+/// [Crux.forTheModelCall], then its reply through [Crux.forTheReply]. A
+/// restarted loop's next turn follows the latest place in its history.
 ///
-/// A trajectory's first proposal is its open notice ([TrajectoryOpened]),
-/// in a turn of its own, before its first answer; a trajectory with any
-/// proposal already is never sent one ([owesOpenNotice]).
+/// A reply is two actions ([replyActions]): run the program named by
+/// `--reply-builder`, such as teams_module's `teams-message`, which builds
+/// the message's requests, then send exactly those. They go to the reply
+/// endpoint the trajectory's starting admission recorded, as the sign-in
+/// its rules' reply grant goes as ([WhatMayLeaveThisMachine.signInForReply]),
+/// so the loop knows no external system, and the airlock decides where each
+/// request goes. Without a builder, an endpoint or a sign-in, nothing is
+/// sent and the loop says why.
 ///
-/// Once it has the model's reply, answers the message with it by reference
-/// only ([ReplyToEvent]: the admission and the reply's outcome entry). Where
-/// the answer goes, as whom and in what shape are the airlock's and its
-/// module's to work out, so the loop knows no external system. When the
-/// model call or the answer is refused, the message is answered instead
-/// with a [RefusalNoticeToEvent] naming the refused outcome, so its sender
-/// decides what to do; a refused notice or open notice is only logged.
+/// When the model call is refused, the turn's reply says why, so its sender
+/// decides what to do. A refused reply is only logged: the way back to the
+/// person is what failed.
 library;
 
 import 'dart:io';
 
 import 'package:agent_loop/agent_loop.dart';
-import 'package:is_effects/is_effects.dart' show ModelReply;
+import 'package:is_effects/is_effects.dart'
+    show ModelReply, ModelUsage, ProgramName;
 import 'package:is_airlock_api/is_airlock_api.dart'
-    show
-        Action,
-        Crux,
-        Done,
-        Failed,
-        ModelCall,
-        PlaceInTrajectory,
-        Program,
-        ReplyToEvent,
-        RefusalNoticeToEvent,
-        Result,
-        TrajectoryOpened;
+    show Action, Crux, Done, Executable, Failed, ModelCall, Program, Result;
+import 'package:is_flight_rules/is_flight_rules.dart'
+    show WhatMayLeaveThisMachine;
 import 'package:is_logbook_client/is_logbook_client.dart'
     show Kind, LogbookReader, ObjectId;
 import 'package:is_shapes/is_shapes.dart' show EntryId;
@@ -62,7 +54,8 @@ Future<void> main(List<String> args) async {
   final options = _Options.parse(args);
   if (options == null) {
     stderr.writeln(
-      'usage: agent_loop --logbook-read <socket> --logbook-write <socket>',
+      'usage: agent_loop --logbook-read <socket> --logbook-write <socket> '
+      '[--reply-builder <program>]',
     );
     exitCode = 64; // EX_USAGE
     return;
@@ -71,7 +64,8 @@ Future<void> main(List<String> args) async {
   final loopUser = Process.runSync('id', ['-un']).stdout.toString().trim();
   stdout.writeln(
     'agent_loop: ready loopUser=$loopUser '
-    'read=${options.logbookRead} write=${options.logbookWrite}',
+    'read=${options.logbookRead} write=${options.logbookWrite} '
+    'replyBuilder=${options.replyBuilder?.name ?? 'none'}',
   );
 
   final reader = LogbookReader(options.logbookRead);
@@ -97,58 +91,56 @@ Future<void> main(List<String> args) async {
   final history = <TrajectoryEvent>[];
   var nextTurn = 0;
 
-  // The open notice takes a turn of its own, so a fresh trajectory opens at
-  // [0, 0] and its first answer is turn 1. A refusal is logged, not
-  // retried: the proposal is in the history either way.
-  Future<void> openTrajectory() async {
-    final turn = nextTurn++;
-    final opened = Program.answerEvent.runOrRefusal<int>(
-      const TrajectoryOpened(),
-      then: (responses) => Done(responses.length),
-    );
-    stdout.writeln('agent_loop: proposing the open notice at turn $turn');
-    switch (await opened.next(Crux.through(link, turn: turn))) {
-      case Done(:final value):
-        stdout.writeln('agent_loop: opened, in $value part(s)');
-      case Failed(:final why):
-        stderr.writeln('agent_loop: open notice refused: $why');
-      case Action():
-        throw StateError('runOrRefusal returned an unresolved Action');
-    }
-  }
-
-  // Tells whoever sent [event] that the action at [failed] was refused, and
-  // why, at the turn's next step, so they decide what to do. The airlock
-  // sends only the reason it recorded. A refused notice is only logged.
-  Future<void> noticeRefusal(
-    SaidByUser event,
-    Crux crux,
-    PlaceInTrajectory failed,
-  ) async {
-    final refusal = link.resultEntryAt(failed);
-    if (refusal == null) {
+  // Says [text] back to whoever started the trajectory, as [turn]'s reply,
+  // footered with [usage] when the model call reported it. A refused reply
+  // is only logged: there is no other way back.
+  Future<void> sayBack(
+    int turn,
+    String text,
+    String what, {
+    ModelUsage? usage,
+  }) async {
+    final builder = options.replyBuilder;
+    final started = history.whereType<TrajectoryStarted>().firstOrNull;
+    final endpoint = started?.replyEndpoint;
+    if (builder == null || started == null || endpoint == null) {
       stderr.writeln(
-        'agent_loop: no result entry recorded at $failed, no refusal notice',
+        'agent_loop: $what not sent: '
+        '${builder == null ? 'no --reply-builder' : 'no reply endpoint'}',
       );
       return;
     }
-    final noticed = Program.answerEvent.runOrRefusal<int>(
-      RefusalNoticeToEvent(
-        respondsTo: EntryId.parse(event.hash.hex)!,
-        refusal: refusal,
+    final signIn = started.rules.whatMayLeaveThisMachine.signInForReply(
+      replyEndpoint: endpoint,
+      leasedNow: const {},
+      pooled: const {},
+    );
+    if (signIn == null) {
+      stderr.writeln(
+        "agent_loop: $what not sent: the rules' reply grants go as no one",
+      );
+      return;
+    }
+    stdout.writeln('agent_loop: proposing the $what at turn $turn');
+    final sent = await runToEnd(
+      replyActions(
+        builder: builder,
+        text: text,
+        usage: usage,
+        replyEndpoint: endpoint,
+        signIn: signIn,
+        trajectory: started.trajectory,
+        turn: turn,
       ),
-      then: (responses) => Done(responses.length),
+      Crux.forTheReply(link, turn: turn),
     );
-    stdout.writeln(
-      'agent_loop: proposing the refusal notice for ${refusal.hex}',
-    );
-    switch (await noticed.next(crux)) {
+    switch (sent) {
       case Done(:final value):
-        stdout.writeln('agent_loop: refusal noticed, in $value part(s)');
+        stdout.writeln('agent_loop: $what sent, in $value request(s)');
       case Failed(:final why):
-        stderr.writeln('agent_loop: refusal notice refused: $why');
+        stderr.writeln('agent_loop: $what refused: $why');
       case Action():
-        throw StateError('runOrRefusal returned an unresolved Action');
+        throw StateError('runToEnd returned an unresolved Action');
     }
   }
 
@@ -171,10 +163,7 @@ Future<void> main(List<String> args) async {
     );
     stdout.writeln('agent_loop: recorded model-request ${requestHash.hex}');
 
-    // One crux for the whole turn: the model call is its step 0, the post
-    // its step 1.
     final turn = nextTurn++;
-    final crux = Crux.through(link, turn: turn);
     final asked = Program.askTheModel.runOrRefusal<ModelReply>(
       ModelCall(
         signIn: model.signIn,
@@ -183,45 +172,25 @@ Future<void> main(List<String> args) async {
       ),
       then: (ModelReply reply) => Done(reply),
     );
-    final Result<ModelReply> outcome = await asked.next(crux);
+    final Result<ModelReply> outcome = await asked.next(
+      Crux.forTheModelCall(link, turn: turn),
+    );
     switch (outcome) {
       case Done(:final value):
         stdout.writeln('agent_loop: model replied: ${value.text}');
-        try {
-          final resultEntry = link.resultEntryAt(PlaceInTrajectory.at(turn, 0));
-          if (resultEntry == null) {
-            stderr.writeln(
-              'agent_loop: no result entry recorded for turn $turn, not '
-              'answering',
-            );
-            break;
-          }
-          final answered = Program.answerEvent.runOrRefusal<int>(
-            ReplyToEvent(
-              respondsTo: EntryId.parse(event.hash.hex)!,
-              reply: resultEntry,
-            ),
-            then: (responses) => Done(responses.length),
-          );
-          stdout.writeln(
-            'agent_loop: proposing the answer to ${event.hash.hex} with '
-            '${resultEntry.hex}',
-          );
-          switch (await answered.next(crux)) {
-            case Done(:final value):
-              stdout.writeln('agent_loop: answered, in $value part(s)');
-            case Failed(:final why):
-              stderr.writeln('agent_loop: answer refused: $why');
-              await noticeRefusal(event, crux, PlaceInTrajectory.at(turn, 1));
-            case Action():
-              throw StateError('runOrRefusal returned an unresolved Action');
-          }
-        } on Object catch (e, st) {
-          stderr.writeln('agent_loop: answering threw: $e\n$st');
-        }
+        await sayBack(
+          turn,
+          value.text,
+          'answer to ${event.hash.hex}',
+          usage: value.usage,
+        );
       case Failed(:final why):
         stdout.writeln('agent_loop: model call refused: $why');
-        await noticeRefusal(event, crux, PlaceInTrajectory.at(turn, 0));
+        await sayBack(
+          turn,
+          'The model call was refused: $why',
+          'refusal notice',
+        );
       case Action():
         // runOrRefusal's own then never returns one: it is called only
         // with the output, never asked to propose a further action.
@@ -252,41 +221,56 @@ Future<void> main(List<String> args) async {
           'agent_loop: caught up at place ${last ?? 'none'}, '
           '${owed == null ? 'nothing owed' : 'answering ${owed.hash.hex}'}',
         );
-        if (owesOpenNotice(history)) await openTrajectory();
         if (owed != null) await answer(owed);
       case TrajectoryEvent event:
         history.add(event);
         if (!caughtUp) continue;
-        if (event is TrajectoryStarted && owesOpenNotice(history)) {
-          await openTrajectory();
-        }
         if (event is SaidByUser && event.startsTurn) await answer(event);
     }
   }
 }
 
 final class _Options {
-  const _Options({required this.logbookRead, required this.logbookWrite});
+  const _Options({
+    required this.logbookRead,
+    required this.logbookWrite,
+    required this.replyBuilder,
+  });
 
   final String logbookRead;
   final String logbookWrite;
 
-  /// Reads `--logbook-read` and `--logbook-write`.
+  /// The program that builds a reply's requests, run through the airlock's
+  /// program driver; null sends no replies.
+  final Executable? replyBuilder;
+
+  /// Reads `--logbook-read`, `--logbook-write` and, optionally,
+  /// `--reply-builder`.
   static _Options? parse(List<String> args) {
     String? logbookRead;
     String? logbookWrite;
+    ProgramName? replyBuilder;
     for (var i = 0; i < args.length; i++) {
       switch (args[i]) {
         case '--logbook-read' when i + 1 < args.length:
           logbookRead = args[++i];
         case '--logbook-write' when i + 1 < args.length:
           logbookWrite = args[++i];
+        case '--reply-builder' when i + 1 < args.length:
+          replyBuilder = ProgramName.parse(args[++i]);
+          if (replyBuilder == null) return null;
         default:
           return null;
       }
     }
     return logbookRead != null && logbookWrite != null
-        ? _Options(logbookRead: logbookRead, logbookWrite: logbookWrite)
+        ? _Options(
+            logbookRead: logbookRead,
+            logbookWrite: logbookWrite,
+            replyBuilder: replyBuilder == null
+                ? null
+                : Executable(replyBuilder),
+          )
         : null;
   }
 }

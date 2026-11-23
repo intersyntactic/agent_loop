@@ -14,7 +14,7 @@ import 'package:is_airlock_api/is_airlock_api.dart'
         Crux,
         Done,
         ModelCall,
-        PlaceInTrajectory,
+        ProposedForTheModelCall,
         Program,
         outcomeOfProposedActionKind,
         outcomeOfProposedActionToJson;
@@ -98,7 +98,7 @@ void main() {
     final root = (rootResult as client.Written).entry;
 
     // The relay's own raw event, written before the admission that names
-    // it, as loop_launcher's feed now delivers it.
+    // it: the loop never subscribes to it, so it never shows in the feed.
     final eventKind = Kind.parse('event')!;
     final rawEventBody = utf8.encode('{"type":"message"}');
     final rawEventResult = await rawWriter.write(
@@ -162,8 +162,6 @@ void main() {
       (found[0] as SaidByUser).address,
       AddressInExternalSystem.parse('teams:c1'),
     );
-    expect((found[0] as SaidByUser).rawEvent?.id, rawEventEntry);
-    expect((found[0] as SaidByUser).rawEvent?.body, rawEventBody);
     expect(found[1], isA<TurnOnChain>());
     expect((found[1] as TurnOnChain).hash, turnHash);
 
@@ -180,7 +178,8 @@ void main() {
     );
     WhatMayLeaveThisMachine allowing(String signIn) => WhatMayLeaveThisMachine(
       modelSignInsCallsMayGoOutAs: [ModelSignInName.parse(signIn)!],
-      sitesTheWebDriverMayReach: const [],
+      fetchesMayReach: const [],
+      webRequestsMayReach: const [],
       programsNetwork: ProgramsNetwork.values.first,
     );
 
@@ -247,6 +246,8 @@ void main() {
       final rules = FlightRules.of(
         whatMayLeaveThisMachine: allowing('nick-claude-team'),
         startingModel: claude,
+        programsItMayRun: const [],
+        programsItNeeds: const [],
       )!.toJson();
       final found = await admit([('first', rules), ('follow-up', null)]);
 
@@ -270,6 +271,8 @@ void main() {
           'signIn': 'nick-claude-team',
           'model': 'claude-opus-5-5',
         },
+        'programsItMayRun': <Object?>[],
+        'programsItNeeds': <Object?>[],
       });
       final found = await admit([('first', notAllowed)]);
 
@@ -314,7 +317,7 @@ void main() {
     final link = TrajectoryCrux(chain: chain, returned: returned.stream);
     final outcomeKind = Kind.parse(outcomeOfProposedActionKind)!;
     Future<client.ObjectId> answer(
-      int place,
+      int turn,
       Outcome<ModelReply> outcome,
     ) async {
       final asked = Program.askTheModel.runOrRefusal<ModelReply>(
@@ -326,7 +329,7 @@ void main() {
         then: (ModelReply reply) => Done(reply),
       );
       final before = chain.tip;
-      final done = asked.next(Crux.through(link, turn: place));
+      final done = asked.next(Crux.forTheModelCall(link, turn: turn));
       while (chain.tip == before) {
         await Future<void>.delayed(const Duration(milliseconds: 10));
       }
@@ -390,14 +393,14 @@ void main() {
           },
       ],
       [
-        'proposed 1.0 model=true',
+        'proposed 1.model-call model=true',
         'reply ran',
-        'proposed 2.0 model=true',
-        'proposed 3.0 model=true',
+        'proposed 2.model-call model=true',
+        'proposed 3.model-call model=true',
         'reply cut',
       ],
     );
-    expect(lastPlace(found), PlaceInTrajectory.at(3, 0));
+    expect(lastPlace(found), ProposedForTheModelCall.at(3));
     // A cut-off reply reaches the model marked as cut off, never as finished.
     expect(jsonDecode(encodeModelInput(trajectoryInput(found))), [
       {'role': 'assistant', 'content': 'yes, here'},
