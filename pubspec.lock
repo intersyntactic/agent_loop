@@ -157,10 +157,10 @@ packages:
     dependency: "direct main"
     description:
       name: is_airlock_api
-      sha256: "266ade242c055ec6efa422f2aab12c4b1b9fa0ef8f484a3615dc052818b7952a"
+      sha256: "239bd3fe6f471582df2c3a12bc5cc98d8bf4bd3d812c7c63d4b88b03a03e891c"
       url: "https://pub.dev"
     source: hosted
-    version: "0.14.0"
+    version: "0.17.0"
   is_annotation_shapes:
     dependency: transitive
     description:
@@ -189,26 +189,26 @@ packages:
     dependency: "direct main"
     description:
       name: is_docking_station_api
-      sha256: e1d74771f50a2f507104ec57fa8a4383c7543d5406ff7e908bde702800cdfaaf
+      sha256: cf10508402a18f108db6dffe132852d2d5e3eb6fe0562aef6cddd7d039bc8c79
       url: "https://pub.dev"
     source: hosted
-    version: "0.3.0"
+    version: "0.4.0"
   is_effects:
     dependency: "direct main"
     description:
       name: is_effects
-      sha256: a9bedb77f620bc711fa81a817c7fbfce0028c567a87cfbc63a2a023d9acd74bd
+      sha256: "95b051e592edb4e04241e89be3ac1500c0abaf58fdec8e64f40a2cbe7a7ebfc7"
       url: "https://pub.dev"
     source: hosted
-    version: "0.12.0"
+    version: "0.14.2"
   is_flight_rules:
     dependency: "direct main"
     description:
       name: is_flight_rules
-      sha256: ee717fe2c470fc6ec50649352988c76e5a564dffca2964218a8c9ee4a1922a06
+      sha256: ccca6da45d07ee5689f19707abfe19c1e534fb6636b097a58aa3527d65ee9799
       url: "https://pub.dev"
     source: hosted
-    version: "0.3.0"
+    version: "0.5.0"
   is_logbook:
     dependency: "direct dev"
     description:
@@ -257,6 +257,14 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "0.1.0"
+  is_web_address_vocabulary:
+    dependency: transitive
+    description:
+      name: is_web_address_vocabulary
+      sha256: "232241a06a2871213e110f52f01c8c68b6c98fdcdf00fcfb491c8e24d10d8dac"
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.1.1"
   lints:
     dependency: "direct dev"
     description:

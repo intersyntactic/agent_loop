@@ -4,13 +4,11 @@
 import 'dart:typed_data';
 
 import 'package:agent_loop/agent_loop.dart';
-import 'package:is_airlock_api/is_airlock_api.dart' show PlaceInTrajectory;
+import 'package:is_airlock_api/is_airlock_api.dart'
+    show ProposedForTheModelCall, ProposedForTheReply;
 import 'package:is_docking_station_api/is_docking_station_api.dart'
     show AddressInExternalSystem;
-import 'package:is_effects/is_effects.dart'
-    show FinishedReply, ModelAndSignIn, ModelName, ModelSignInName;
-import 'package:is_flight_rules/is_flight_rules.dart'
-    show FlightRules, ProgramsNetwork, WhatMayLeaveThisMachine;
+import 'package:is_effects/is_effects.dart' show FinishedReply;
 import 'package:is_logbook_client/is_logbook_client.dart' show ObjectId;
 import 'package:is_shapes/is_shapes.dart' show ActorId;
 import 'package:test/test.dart';
@@ -23,37 +21,21 @@ SaidByUser _user(String seed, {bool startsTurn = true}) => SaidByUser(
   text: seed,
   startsTurn: startsTurn,
   address: AddressInExternalSystem.parse('teams:c1')!,
-  rawEvent: null,
 );
 
+/// A model call at [turn], or with [model] false, [action] of its reply.
 ActionProposed _proposed(
   String seed,
   int turn, {
-  int step = 0,
+  int action = 0,
   bool model = true,
 }) => ActionProposed(
   hash: _id(seed),
-  place: PlaceInTrajectory.at(turn, step),
+  place: model
+      ? ProposedForTheModelCall.at(turn)
+      : ProposedForTheReply.at(turn, action),
   asksTheModel: model,
 );
-
-TrajectoryStarted _started(String seed) {
-  final signIn = ModelSignInName.parse('nick-claude-team')!;
-  return TrajectoryStarted(
-    hash: _id(seed),
-    rules: FlightRules.of(
-      whatMayLeaveThisMachine: WhatMayLeaveThisMachine(
-        modelSignInsCallsMayGoOutAs: [signIn],
-        sitesTheWebDriverMayReach: const [],
-        programsNetwork: ProgramsNetwork.values.first,
-      ),
-      startingModel: ModelAndSignIn(
-        signIn: signIn,
-        model: ModelName.parse('claude-opus-5-5')!,
-      ),
-    )!,
-  );
-}
 
 SaidByAgent _agent(String seed) => SaidByAgent(
   hash: _id(seed),
@@ -66,7 +48,7 @@ void main() {
       _user('u1'),
       _proposed('p1', 1),
       _agent('a1'),
-      _proposed('p2', 1, step: 1, model: false), // the answer
+      _proposed('p2', 1, action: 1, model: false), // the answer
     ];
 
     expect(unansweredTurn(history), isNull);
@@ -110,47 +92,20 @@ void main() {
     );
   });
 
-  test('a trajectory started under rules, with nothing proposed, owes its '
-      'open notice', () {
-    expect(owesOpenNotice([_started('s'), _user('u1')]), isTrue);
-  });
-
-  test('any proposal means the open notice is not owed: never a second, '
-      'never a late one', () {
-    expect(
-      owesOpenNotice([_started('s'), _proposed('p0', 0, model: false)]),
-      isFalse,
-    );
-    expect(
-      owesOpenNotice([_started('s'), _user('u1'), _proposed('p1', 0)]),
-      isFalse,
-    );
-  });
-
-  test('no open notice without rules that read', () {
-    expect(owesOpenNotice([_user('u1')]), isFalse);
-    expect(
-      owesOpenNotice([
-        TrajectoryRulesUnreadable(hash: _id('s'), why: 'test'),
-        _user('u1'),
-      ]),
-      isFalse,
-    );
-  });
-
-  test('the latest place is by turn, then step; none used is null', () {
+  test('the latest place is by turn, then the reply after the model call; '
+      'none used is null', () {
     expect(lastPlace([]), isNull);
     expect(
       lastPlace([
         _proposed('p1', 1),
         _proposed('p3', 3),
-        _proposed('p2', 2, step: 5),
+        _proposed('p2', 2, action: 5, model: false),
       ]),
-      PlaceInTrajectory.at(3, 0),
+      ProposedForTheModelCall.at(3),
     );
     expect(
-      lastPlace([_proposed('p1', 2), _proposed('p2', 2, step: 1)]),
-      PlaceInTrajectory.at(2, 1),
+      lastPlace([_proposed('p1', 2), _proposed('p2', 2, model: false)]),
+      ProposedForTheReply.at(2, 0),
     );
   });
 }

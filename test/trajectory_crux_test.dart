@@ -8,7 +8,8 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:agent_loop/agent_loop.dart';
-import 'package:is_airlock_api/is_airlock_api.dart' show PlaceInTrajectory;
+import 'package:is_airlock_api/is_airlock_api.dart'
+    show ProposedForTheModelCall;
 import 'package:is_logbook/is_logbook.dart';
 import 'package:is_logbook/service.dart';
 import 'package:is_logbook_client/is_logbook_client.dart'
@@ -17,8 +18,8 @@ import 'package:is_logbook_client/is_logbook_client.dart' as client;
 import 'package:is_shapes/is_shapes.dart' show EntryId;
 import 'package:test/test.dart';
 
-String _proposal(int turn, int step) => jsonEncode({
-  'place': [turn, step],
+String _proposal(int turn) => jsonEncode({
+  'place': ProposedForTheModelCall.at(turn).toJson(),
   'program': 'model',
   'input': {
     'signIn': 'anthropic-api',
@@ -73,7 +74,7 @@ void main() {
     final writtenEntry = LogbookReader('${tmp.path}/logbook.read.sock')
         .subscribe(kinds: {proposedKind})
         .firstWhere((item) => item is Entry);
-    final body = _proposal(1, 0);
+    final body = _proposal(1);
     final id = await crux.writeProposal(body);
     final entry = await writtenEntry as Entry;
 
@@ -93,8 +94,8 @@ void main() {
 
     expect(await outcome, 'this one');
     // Its result entry is reachable by the proposal's place, once.
-    expect(crux.resultEntryAt(PlaceInTrajectory.at(1, 0)), resultEntry);
-    expect(crux.resultEntryAt(PlaceInTrajectory.at(1, 0)), isNull);
+    expect(crux.resultEntryAt(ProposedForTheModelCall.at(1)), resultEntry);
+    expect(crux.resultEntryAt(ProposedForTheModelCall.at(1)), isNull);
 
     await crux.close();
     await returned.close();
@@ -107,7 +108,7 @@ void main() {
       returned: returned.stream,
     );
 
-    final id = await crux.writeProposal(_proposal(2, 1));
+    final id = await crux.writeProposal(_proposal(2));
     returned.add((
       proposed: id,
       resultEntry: EntryId.of(utf8.encode('early-result-entry')),
@@ -117,7 +118,7 @@ void main() {
 
     expect(await crux.outcomeNaming(id), 'early');
     expect(
-      crux.resultEntryAt(PlaceInTrajectory.at(2, 1)),
+      crux.resultEntryAt(ProposedForTheModelCall.at(2)),
       EntryId.of(utf8.encode('early-result-entry')),
     );
 

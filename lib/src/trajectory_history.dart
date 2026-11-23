@@ -26,6 +26,7 @@ import 'package:is_docking_station_api/is_docking_station_api.dart'
         DecisionEntryKind,
         EventAdmittedToMission,
         MessageSaid,
+        StartsTrajectory,
         decodeDecision;
 import 'package:checked_json/checked_json.dart' show JsonObject;
 import 'package:is_flight_rules/is_flight_rules.dart' show FlightRules;
@@ -33,6 +34,7 @@ import 'package:is_logbook_client/is_logbook_client.dart'
     show CaughtUp, Entry, Kind, LogbookReader, ObjectId;
 import 'package:is_effects/is_effects.dart'
     show
+        AddressPrefix,
         CutOffReply,
         FinishedReply,
         ModelAndSignIn,
@@ -41,7 +43,7 @@ import 'package:is_effects/is_effects.dart'
         Refused,
         decodeModelReply,
         decodeOutcome;
-import 'package:is_shapes/is_shapes.dart' show ActorId, EntryId;
+import 'package:is_shapes/is_shapes.dart' show ActorId, EntryId, TrajectoryId;
 
 import 'model_request_input.dart'
     show ModelInputRole, ModelInputTurn, inputTurnOf;
@@ -82,7 +84,6 @@ final class SaidByUser extends TrajectoryEvent {
     required this.text,
     required this.startsTurn,
     required this.address,
-    required this.rawEvent,
   });
 
   final ActorId author;
@@ -92,16 +93,6 @@ final class SaidByUser extends TrajectoryEvent {
   /// Where this was said, in the external system it came from: a reply to
   /// this turn goes back here.
   final AddressInExternalSystem address;
-
-  /// The relay's own `event` entry this admission decided (its `event`
-  /// field): loop_launcher delivers it in this same feed, immediately
-  /// before the admission that names it. The feed answers only
-  /// `subscribe`, never `get`, so there is no other way to reach it. Null
-  /// only if it somehow did not arrive first, which the
-  /// feed's own contract says cannot happen. Pass its `id` and `body` to
-  /// docking_station's `RelayedEvent.read` for whatever a module needs that
-  /// an admission's reading doesn't carry.
-  final Entry? rawEvent;
 }
 
 /// The model's reply to a call this loop proposed, read from the airlock's
@@ -136,9 +127,23 @@ final class ActionProposed extends TrajectoryEvent {
 /// under: [FlightRules.startingModel] is the model and sign-in its loop's
 /// calls go out as.
 final class TrajectoryStarted extends TrajectoryEvent {
-  const TrajectoryStarted({required super.hash, required this.rules});
+  const TrajectoryStarted({
+    required super.hash,
+    required this.rules,
+    required this.replyEndpoint,
+  });
 
   final FlightRules rules;
+
+  /// The trajectory's id: the hash of the admission that started it, never
+  /// the loop's own chain root, which is its loop user's assignment.
+  TrajectoryId get trajectory => TrajectoryId.parse(hash.hex)!;
+
+  /// Where replies to the event that started the trajectory go, as the
+  /// admission recorded it beside [rules]: the one value the airlock's
+  /// reply grants are decided against. Null when the module that
+  /// translated the event can't name one, and the loop then sends no reply.
+  final AddressPrefix? replyEndpoint;
 }
 
 /// The admission that started this trajectory carried rules that do not
@@ -156,7 +161,6 @@ final class TurnOnChain extends TrajectoryEvent {
   final TurnEnvelope turn;
 }
 
-final _eventKind = Kind.parse('event')!;
 final _proposedKind = Kind.parse(ActionProposedByAgentLoop.kind)!;
 final _outcomeKind = Kind.parse(outcomeOfProposedActionKind)!;
 
@@ -168,11 +172,8 @@ final _outcomeKind = Kind.parse(outcomeOfProposedActionKind)!;
 /// whose reading is not something said (a join, a change) is skipped: this
 /// loop has nothing to render for it yet.
 ///
-/// The relay's raw `event` entries arrive too, each immediately before the
-/// admission that names it (loop_launcher's contract): held here, by id,
-/// until that admission turns up to claim it, never emitted as their own
-/// [TrajectoryEvent] since nothing here knows what to render of one — that
-/// is a module's job, done with [SaidByUser.rawEvent] once it is read.
+/// The relay's raw events are not subscribed to: what the loop needs of an
+/// event is in its admission, and a raw event's kind is its source's.
 ///
 /// The loop's own proposals arrive too, each as an [ActionProposed], and
 /// the airlock's outcome of each: an outcome answering a proposal that
@@ -189,12 +190,10 @@ Stream<TrajectoryFeedItem> followTrajectoryHistory(
   required ObjectId chainRoot,
 }) {
   final onChain = <ObjectId>{chainRoot};
-  final rawEvents = <ObjectId, Entry>{};
   final modelCalls = <EntryId>{};
   final kinds = {
     turnKind,
     DecisionEntryKind.eventAdmittedToMission,
-    _eventKind,
     _proposedKind,
     _outcomeKind,
   };
@@ -236,17 +235,20 @@ Stream<TrajectoryFeedItem> followTrajectoryHistory(
         TurnOnChain(hash: entry.id, turn: TurnEnvelope.decode(entry.body)),
       ];
     }
-    if (entry.kind == _eventKind) {
-      rawEvents[entry.id] = entry;
-      return const [];
-    }
     final decision = decodeDecision(entry.kind, entry.body);
     if (decision is! EventAdmittedToMission) return const [];
     return [
-      if (decision.rules case final rules?) _startedUnder(entry.id, rules),
       if (decision case EventAdmittedToMission(
-        :final event,
-        reading: MessageSaid(:final node, :final addressInExternalSystem),
+        placement: StartsTrajectory(),
+        rules: final rules?,
+        :final replyEndpoint,
+      ))
+        _startedUnder(entry.id, rules, replyEndpoint),
+      if (decision case EventAdmittedToMission(
+        translatedEvent: MessageSaid(
+          :final node,
+          :final addressInExternalSystem,
+        ),
         :final startsTurn,
       ))
         SaidByUser(
@@ -255,17 +257,25 @@ Stream<TrajectoryFeedItem> followTrajectoryHistory(
           text: node.text,
           startsTurn: startsTurn ?? false,
           address: addressInExternalSystem,
-          rawEvent: rawEvents.remove(event),
         ),
     ];
   });
 }
 
-/// The admission [hash] started this trajectory under [rules]: read once,
-/// strictly, as [FlightRules].
-TrajectoryEvent _startedUnder(ObjectId hash, JsonObject rules) {
+/// The admission [hash] started this trajectory under [rules], with replies
+/// going to [replyEndpoint]: the rules read once, strictly, as
+/// [FlightRules].
+TrajectoryEvent _startedUnder(
+  ObjectId hash,
+  JsonObject rules,
+  AddressPrefix? replyEndpoint,
+) {
   try {
-    return TrajectoryStarted(hash: hash, rules: FlightRules.fromJson(rules));
+    return TrajectoryStarted(
+      hash: hash,
+      rules: FlightRules.fromJson(rules),
+      replyEndpoint: replyEndpoint,
+    );
   } on FormatException catch (e) {
     return TrajectoryRulesUnreadable(hash: hash, why: e.message);
   }
@@ -361,15 +371,6 @@ SaidByUser? unansweredTurn(List<TrajectoryEvent> history) {
   }
   return null;
 }
-
-/// Whether a loop started on [history] still owes its trajectory the open
-/// notice: the trajectory started under rules that read, and this loop has
-/// proposed nothing on it. The notice is the trajectory's first proposal, so
-/// one with any proposal already had it, and a restarted loop never sends a
-/// second, nor a late one into a conversation already under way.
-bool owesOpenNotice(List<TrajectoryEvent> history) =>
-    history.any((event) => event is TrajectoryStarted) &&
-    !history.any((event) => event is ActionProposed);
 
 /// The latest entry this loop wrote on its own chain that [history] holds:
 /// a proposal or a turn. A restarted loop's chain resumes after it.
