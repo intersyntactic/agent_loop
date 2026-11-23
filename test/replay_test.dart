@@ -5,7 +5,7 @@ import 'dart:typed_data';
 
 import 'package:agent_loop/agent_loop.dart';
 import 'package:is_airlock_api/is_airlock_api.dart' show PlaceInTrajectory;
-import 'package:is_admission_vocabulary/is_admission_vocabulary.dart'
+import 'package:is_docking_station_api/is_docking_station_api.dart'
     show AddressInExternalSystem;
 import 'package:is_effects/is_effects.dart'
     show FinishedReply, ModelAndSignIn, ModelName, ModelSignInName;
