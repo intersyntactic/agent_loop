@@ -1,5 +1,5 @@
-// Proves a reply is the translator's run, then exactly the requests it
-// printed, each at its own place in the turn's reply, and that a translator
+// Proves a reply is the drawing's run, then exactly the requests it
+// printed, each at its own place in the turn's reply, and that a drawing
 // that fails or prints nothing usable sends nothing.
 import 'dart:convert';
 
@@ -39,7 +39,7 @@ final _endpoint = AddressPrefix.of(
 );
 final _signIn = SignIn.parse('cam-teams')!;
 final _trajectory = TrajectoryId.parse('a1' * 32)!;
-final _translator = Executable(ProgramName.parse('teams-reply-translator')!);
+final _drawing = Executable(ProgramName.parse('teams-reply-drawing')!);
 
 const _request = {
   'origin': 'https://smba.trafficmanager.net',
@@ -78,7 +78,7 @@ final class _FakeLink implements ProposesActionsThroughTheLogbook {
   );
 }
 
-Object? _translated(ExecResult result) =>
+Object? _drawn(ExecResult result) =>
     encodeOutcome(Ran(result), encodeExecResult);
 
 Object? _sent(int count) => encodeOutcome(
@@ -87,9 +87,9 @@ Object? _sent(int count) => encodeOutcome(
 );
 
 void main() {
-  group('translatorArgs', () {
+  group('drawingArgs', () {
     test('text goes on stdin, with the turn and context for its footer', () {
-      final args = translatorArgs(
+      final args = drawingArgs(
         text: 'hello',
         usage: const ModelUsage(
           input: 100,
@@ -124,7 +124,7 @@ void main() {
     });
 
     test('no usage, no context flags', () {
-      final args = translatorArgs(
+      final args = drawingArgs(
         text: 'hello',
         usage: null,
         replyEndpoint: _endpoint,
@@ -165,17 +165,17 @@ void main() {
   });
 
   group('replyActions', () {
-    test('runs the translator, then sends what it printed, at reply places 0 '
+    test('runs the drawing, then sends what it printed, at reply places 0 '
         'and 1', () async {
       final printed = jsonEncode([_request]);
       final link = _FakeLink([
-        (_) => _translated(Exited(0, stdout: printed, stderr: '')),
+        (_) => _drawn(Exited(0, stdout: printed, stderr: '')),
         (_) => _sent(1),
       ]);
 
       final result = await runToEnd(
         replyActions(
-          translator: _translator,
+          drawing: _drawing,
           text: 'hi',
           usage: null,
           replyEndpoint: _endpoint,
@@ -191,18 +191,17 @@ void main() {
         [for (final p in link.proposals) p.place],
         [ProposedForTheReply.at(4, 0), ProposedForTheReply.at(4, 1)],
       );
-      expect(link.proposals.first.program, _translator);
+      expect(link.proposals.first.program, _drawing);
     });
 
-    test('a translator that exits nonzero sends nothing', () async {
+    test('a drawing that exits nonzero sends nothing', () async {
       final link = _FakeLink([
-        (_) =>
-            _translated(const Exited(65, stdout: '', stderr: 'nothing to say')),
+        (_) => _drawn(const Exited(65, stdout: '', stderr: 'nothing to say')),
       ]);
 
       final result = await runToEnd(
         replyActions(
-          translator: _translator,
+          drawing: _drawing,
           text: ' ',
           usage: null,
           replyEndpoint: _endpoint,
@@ -222,8 +221,7 @@ void main() {
 
     test('a refused send is the reply failing', () async {
       final link = _FakeLink([
-        (_) =>
-            _translated(Exited(0, stdout: jsonEncode([_request]), stderr: '')),
+        (_) => _drawn(Exited(0, stdout: jsonEncode([_request]), stderr: '')),
         (_) => encodeOutcome<Object?>(
           const Refused('not under a reply grant'),
           (_) => null,
@@ -232,7 +230,7 @@ void main() {
 
       final result = await runToEnd(
         replyActions(
-          translator: _translator,
+          drawing: _drawing,
           text: 'hi',
           usage: null,
           replyEndpoint: _endpoint,
