@@ -1,8 +1,9 @@
 /// A reply to the person who started a trajectory, as two actions through
-/// one [Crux.forTheReply]: run the program that builds the message, such as
-/// teams_module's `teams-message`, then send exactly the requests it
-/// printed. The loop never builds a request itself, and the airlock decides
-/// where each one goes.
+/// one [Crux.forTheReply]: run the program that translates it into an
+/// external system's requests, such as teams_module's
+/// `teams-reply-translator`, then send exactly the requests it printed.
+/// The loop never builds a request itself, and the airlock decides where
+/// each one goes.
 library;
 
 import 'dart:convert' show jsonDecode, jsonEncode;
@@ -24,23 +25,23 @@ import 'package:is_effects/is_effects.dart'
 import 'package:is_shapes/is_shapes.dart' show TrajectoryId;
 
 /// The actions of a reply saying [text], such as the model's answer or why
-/// its call was refused, to [replyEndpoint] as [signIn]: [builder] is run
-/// on it and prints the requests as one JSON array of is_effects'
+/// its call was refused, to [replyEndpoint] as [signIn]: [translator] is
+/// run on it and prints the requests as one JSON array of is_effects'
 /// `encodeProposedRequest`; those are then sent in order. Done with how
-/// many were sent; [Failed] when either action is refused, the builder
+/// many were sent; [Failed] when either action is refused, the translator
 /// fails, or what it printed is not requests. [turn] and [usage], how full
-/// the model's context is when the call reported it, go to the builder for
-/// the message's footer, and [trajectory] to what its Close closes.
+/// the model's context is when the call reported it, go to the translator
+/// for the message's footer, and [trajectory] to what its Close closes.
 Action<int> replyActions({
-  required Executable builder,
+  required Executable translator,
   required String text,
   required ModelUsage? usage,
   required AddressPrefix replyEndpoint,
   required SignIn signIn,
   required TrajectoryId trajectory,
   required int turn,
-}) => builder.runOrRefusal(
-  builderArgs(
+}) => translator.runOrRefusal(
+  translatorArgs(
     text: text,
     usage: usage,
     replyEndpoint: replyEndpoint,
@@ -48,7 +49,7 @@ Action<int> replyActions({
     trajectory: trajectory,
     turn: turn,
   ),
-  then: (ExecResult built) => switch (built) {
+  then: (ExecResult translated) => switch (translated) {
     Exited(exitCode: 0, :final stdout) => switch (requestsIn(stdout)) {
       (requests: final requests?, why: _) =>
         Program.makeWebRequests.runOrRefusal(
@@ -56,19 +57,19 @@ Action<int> replyActions({
           then: (responses) => Done(responses.length),
         ),
       (requests: null, :final why) => Failed(
-        '${builder.name} printed no requests: $why',
+        '${translator.name} printed no requests: $why',
       ),
     },
     Exited(:final exitCode, :final stderr) => Failed(
-      '${builder.name} exited $exitCode: ${stderr.trim()}',
+      '${translator.name} exited $exitCode: ${stderr.trim()}',
     ),
-    Killed(:final why) => Failed('${builder.name} was killed: $why'),
+    Killed(:final why) => Failed('${translator.name} was killed: $why'),
   },
 );
 
-/// How a builder is run for [text]: the endpoint, sign-in, trajectory, turn
-/// and context as flags, and the text on its stdin.
-Args builderArgs({
+/// How a translator is run for [text]: the endpoint, sign-in, trajectory,
+/// turn and context as flags, and the text on its stdin.
+Args translatorArgs({
   required String text,
   required ModelUsage? usage,
   required AddressPrefix replyEndpoint,
@@ -91,7 +92,7 @@ Args builderArgs({
   ],
 ], stdin: text);
 
-/// [printed], a builder's stdout, read as its requests: one JSON array of
+/// [printed], a translator's stdout, read as its requests: one JSON array of
 /// proposed requests, at least one. Otherwise null, and why.
 ({List<ProposedRequest>? requests, String? why}) requestsIn(String printed) {
   try {

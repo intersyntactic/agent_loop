@@ -1,5 +1,5 @@
-// Proves a reply is the builder's run, then exactly the requests it
-// printed, each at its own place in the turn's reply, and that a builder
+// Proves a reply is the translator's run, then exactly the requests it
+// printed, each at its own place in the turn's reply, and that a translator
 // that fails or prints nothing usable sends nothing.
 import 'dart:convert';
 
@@ -39,7 +39,7 @@ final _endpoint = AddressPrefix.of(
 );
 final _signIn = SignIn.parse('cam-teams')!;
 final _trajectory = TrajectoryId.parse('a1' * 32)!;
-final _builder = Executable(ProgramName.parse('teams-message')!);
+final _translator = Executable(ProgramName.parse('teams-reply-translator')!);
 
 const _request = {
   'origin': 'https://smba.trafficmanager.net',
@@ -78,7 +78,7 @@ final class _FakeLink implements ProposesActionsThroughTheLogbook {
   );
 }
 
-Object? _built(ExecResult result) =>
+Object? _translated(ExecResult result) =>
     encodeOutcome(Ran(result), encodeExecResult);
 
 Object? _sent(int count) => encodeOutcome(
@@ -87,9 +87,9 @@ Object? _sent(int count) => encodeOutcome(
 );
 
 void main() {
-  group('builderArgs', () {
+  group('translatorArgs', () {
     test('text goes on stdin, with the turn and context for its footer', () {
-      final args = builderArgs(
+      final args = translatorArgs(
         text: 'hello',
         usage: const ModelUsage(
           input: 100,
@@ -124,7 +124,7 @@ void main() {
     });
 
     test('no usage, no context flags', () {
-      final args = builderArgs(
+      final args = translatorArgs(
         text: 'hello',
         usage: null,
         replyEndpoint: _endpoint,
@@ -165,17 +165,17 @@ void main() {
   });
 
   group('replyActions', () {
-    test('runs the builder, then sends what it printed, at reply places 0 '
+    test('runs the translator, then sends what it printed, at reply places 0 '
         'and 1', () async {
       final printed = jsonEncode([_request]);
       final link = _FakeLink([
-        (_) => _built(Exited(0, stdout: printed, stderr: '')),
+        (_) => _translated(Exited(0, stdout: printed, stderr: '')),
         (_) => _sent(1),
       ]);
 
       final result = await runToEnd(
         replyActions(
-          builder: _builder,
+          translator: _translator,
           text: 'hi',
           usage: null,
           replyEndpoint: _endpoint,
@@ -191,17 +191,18 @@ void main() {
         [for (final p in link.proposals) p.place],
         [ProposedForTheReply.at(4, 0), ProposedForTheReply.at(4, 1)],
       );
-      expect(link.proposals.first.program, _builder);
+      expect(link.proposals.first.program, _translator);
     });
 
-    test('a builder that exits nonzero sends nothing', () async {
+    test('a translator that exits nonzero sends nothing', () async {
       final link = _FakeLink([
-        (_) => _built(const Exited(65, stdout: '', stderr: 'nothing to say')),
+        (_) =>
+            _translated(const Exited(65, stdout: '', stderr: 'nothing to say')),
       ]);
 
       final result = await runToEnd(
         replyActions(
-          builder: _builder,
+          translator: _translator,
           text: ' ',
           usage: null,
           replyEndpoint: _endpoint,
@@ -221,7 +222,8 @@ void main() {
 
     test('a refused send is the reply failing', () async {
       final link = _FakeLink([
-        (_) => _built(Exited(0, stdout: jsonEncode([_request]), stderr: '')),
+        (_) =>
+            _translated(Exited(0, stdout: jsonEncode([_request]), stderr: '')),
         (_) => encodeOutcome<Object?>(
           const Refused('not under a reply grant'),
           (_) => null,
@@ -230,7 +232,7 @@ void main() {
 
       final result = await runToEnd(
         replyActions(
-          builder: _builder,
+          translator: _translator,
           text: 'hi',
           usage: null,
           replyEndpoint: _endpoint,
