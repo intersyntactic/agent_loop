@@ -271,16 +271,15 @@ final class _Options {
   final String logbookRead;
   final String logbookWrite;
 
-  /// Reads `--logbook-read` and `--logbook-write`. The `--record-*` spellings
-  /// are accepted for one release, while infra's units move to the new ones.
+  /// Reads `--logbook-read` and `--logbook-write`.
   static _Options? parse(List<String> args) {
     String? logbookRead;
     String? logbookWrite;
     for (var i = 0; i < args.length; i++) {
       switch (args[i]) {
-        case '--logbook-read' || '--record-read' when i + 1 < args.length:
+        case '--logbook-read' when i + 1 < args.length:
           logbookRead = args[++i];
-        case '--logbook-write' || '--record-write' when i + 1 < args.length:
+        case '--logbook-write' when i + 1 < args.length:
           logbookWrite = args[++i];
         default:
           return null;
