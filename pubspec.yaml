@@ -2,9 +2,9 @@ name: agent_loop
 description: >-
   Each trajectory's own agent loop: it writes conversation turns straight
   to the logbook (RULINGS), and replies through the airlock with the
-  requests a program it is given translates its reply into, knowing no
-  external system.
-version: 0.4.0
+  requests a program it is given draws its reply as, knowing no external
+  system.
+version: 0.5.0
 repository: https://github.com/intersyntactic/agent_loop
 publish_to: none
 
