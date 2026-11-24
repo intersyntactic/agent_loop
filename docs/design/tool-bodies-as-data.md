@@ -483,22 +483,60 @@ Two things are open, and between them they decide what stage 1 can do:
    are positional slots (a bound value, an input field or a literal),
    which fit an Executable's argv. A fetch's input is a typed object: an
    origin, a sign-in and a path. The Graph path for a document is built
-   from a bound drive and the model's file name, and joining them is
-   `concat`, which is stage 2's term language. Options: a path template on
-   the fetch action whose holes are filled from slots (the shape
-   airlock-api-b3 named), or stage 1 fetches only whole-value paths.
+   from a bound drive and the model's file name, and joining them
+   arbitrarily is `concat`, which is stage 2's term language. The options
+   weighed:
+   - (a) Stage 1 is RunExecutable only. Rejected: an Executable isn't
+     decided request by request, it reaches whatever its suit can.
+   - (b) A document built-in in the airlock. Rejected: it puts document
+     knowledge into trusted code.
+   - (c) The model writes whole Graph paths. Safe, since the grant's
+     `FromPathsMatching` is the real limit, but the model would have to
+     know Graph.
+   - **(d) Recommended (airlock-api-b3): a fetch tool's path is a
+     `PathPattern`, its holes filled with whole values.** is_flight_rules
+     0.5.0 already has this small, reviewed language
+     (`lib/src/path_pattern.dart`): literal segments, one `{name}` hole
+     per segment, an optional fixed suffix for Graph's `items/F:/name:`
+     form, and holes that refuse `/ \ :` and all-dots. Filling a hole with
+     one checked value isn't concatenation. `read_document` becomes an
+     origin, a sign-in and
+     `/v1.0/drives/{drive}/items/{folder}:/{name}:/content`, with drive
+     and folder bound and name from the model. The tool can point at the
+     same pattern the rules grant, so the path it builds matches the grant
+     by construction. It needs `PathPattern.fill(holes) → WebPath?`, null
+     when a value breaks its hole's rule, tested as a round trip: anything
+     `fill` builds, `matches` accepts, including names with spaces and
+     `%`. **Where `PathPattern` lives:** is_flight_rules depends on
+     is_tools_api (for `givenTools`), so is_tools_api can't depend on
+     is_flight_rules without a cycle. `PathPattern` moves to
+     is_web_address_vocabulary beside `WebPath` and `AddressPrefix`, and
+     both packages depend on that. is_tools_api promises tool packages
+     that it depends on nothing of intersyntactic's but checked_json, so
+     a vocabulary dependency is tools-api-bc's call.
 2. **How a document's bytes become text the model reads.** A fetch of a
    `.docx` returns a zip, and the design already reads documents as
    `fetch` then `docxToPassage` ([Documents stay in drivers](#documents-stay-in-drivers)),
-   which is two actions, so stage 2. Options: a rendering step inside the
-   trusted fetch driver, chosen by the response's type (a smaller form of
-   the same document-knowledge problem); or stage 1 serves only tools whose
-   one action's result is already text, such as listing a folder (Graph
-   returns JSON), and reading a document waits for stage 2.
+   which is two actions, so stage 2. airlock-api-b3's smallest step: a
+   tool is one action plus at most one **output transform** from a closed
+   set (docx-to-text, truncate-to-N). It reaches nothing, so the airlock
+   has no stake, and its code is docx-driver-ce's tested parser. **Where
+   it runs is the open point.** Run in the loop's process, a parser bug
+   triggered by a stranger's document would run with the loop's own
+   powers. The loop holds no sign-in, but it writes to its trajectory's
+   chain and proposes actions as that trajectory. That breaks "a
+   stranger's document is parsed only in a confined driver, never in the
+   core." In a confined process, with no logbook socket and only bytes in
+   and text out, it's safe, but something has to start that process, and
+   the loop starting it bypasses the airlock. Options: the transform runs
+   as a confined child with no sockets (the loop's only new power is
+   starting one fixed program); or stage 1 serves only tools whose result
+   is already text, such as listing a folder (Graph returns JSON), and
+   reading a document waits for stage 2.
 
-If neither is solved in stage 1, stage 1 can list a case folder but can't
-read a document in it. That's a smaller stage 1 than "this serves CAM
-now". Nick decides.
+With (d) and no transform, stage 1 can list a case folder but can't read
+a document in it. With (d) and a confined transform, it serves CAM's
+reads. Nick decides.
 
 The tool-call text format, `<tool_call>{"name", "input"}</tool_call>`
 (agent_loop branch `feat/tool-calls-as-text`), serves both stages. In stage 2
