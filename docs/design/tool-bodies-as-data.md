@@ -482,6 +482,22 @@ something the model may repeat, so a tool asks for no field that grants
 access by being known. That includes pre-signed links, tokens and share
 links.
 
+**Microsoft's wall, proven (infra-dc, 24 Nov 14:13).** Probed straight to
+Graph as the narrow test app, which holds per-item
+`Files.SelectedOperations.Selected`, so the site-wide `Sites.Selected`
+fallback wasn't needed:
+- the test folder gives 200;
+- a sibling folder in the same site gives 404, because Graph hides that
+  it exists;
+- a folder in another site gives 403;
+- without `$select`, `downloadUrl` is there, and with it, it's gone.
+
+One detail: the drive's root lists the granted folder's name, and only
+that one. Our wall, probed through the airlock with the fetch driver's
+log showing no outbound request for each refusal, runs once is_effects
+0.14.3 and is_flight_rules 0.6.0 are published and the rules are
+generated.
+
 **A tool's action is its own closed type, `ToolAction`, in is_tools_api.**
 It is not a free-text name, and it is not the airlock's `Program` set.
 **In stage 1 it has one case, `fetch`** (origin, path and sign-in), since
