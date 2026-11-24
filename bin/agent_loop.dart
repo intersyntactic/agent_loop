@@ -84,10 +84,25 @@ Future<void> main(List<String> args) async {
       'usage: agent_loop --logbook-read <socket> --logbook-write <socket> '
       '[--reply-drawing <program>]',
     );
-    exitCode = 64; // EX_USAGE
+    exitCode = LoopExit.usage.code;
     return;
   }
+  try {
+    await _run(options);
+  } on Object catch (error, trace) {
+    final ending = LoopExit.forFailure(error);
+    stderr.writeln(
+      'agent_loop: exiting ${ending.name} (${ending.code}): $error',
+    );
+    if (ending == LoopExit.software) stderr.writeln(trace);
+    // The logbook subscriptions would keep the process alive past main.
+    exit(ending.code);
+  }
+}
 
+/// Follows the trajectory and answers it until a feed ends or something
+/// fails: it never returns, only throws.
+Future<Never> _run(_Options options) async {
   final loopUser = Process.runSync('id', ['-un']).stdout.toString().trim();
   stdout.writeln(
     'agent_loop: ready loopUser=$loopUser '
@@ -96,14 +111,7 @@ Future<void> main(List<String> args) async {
   );
 
   final reader = LogbookReader(options.logbookRead);
-  final ObjectId root;
-  try {
-    root = await findTrajectoryRoot(reader, loopUser: loopUser);
-  } on NoTrajectoryAssigned catch (e) {
-    stderr.writeln('agent_loop: $e');
-    exitCode = 1;
-    return;
-  }
+  final root = await findTrajectoryRoot(reader, loopUser: loopUser);
   stdout.writeln('agent_loop: assigned root=${root.hex}');
 
   final writer = LogbookWriter(options.logbookWrite);
@@ -270,30 +278,36 @@ Future<void> main(List<String> args) async {
   // The backlog is only read, never answered as it arrives: a message in it
   // may already have its answer further on. Once caught up, the loop
   // answers whatever is owed after each event.
-  var caughtUp = false;
-  await for (final item in followTrajectoryHistory(
-    reader,
-    turnKind: turnKind,
-    chainRoot: root,
-  )) {
-    switch (item) {
-      case CaughtUpWithTrajectory():
-        if (caughtUp) continue;
-        caughtUp = true;
-        if (lastOwnEntry(history) case final lastOwn?) {
-          chain.resumeAfter(lastOwn);
-        }
-        final last = lastPlace(history);
-        nextTurn = (last?.turn ?? -1) + 1;
-        latestOwn = last;
-        stdout.writeln('agent_loop: caught up at place ${last ?? 'none'}');
-        await doOwed();
-      case TrajectoryEvent event:
-        history.add(event);
-        if (!caughtUp) continue;
-        await doOwed();
+  Future<Never> follow() async {
+    var caughtUp = false;
+    await for (final item in followTrajectoryHistory(
+      reader,
+      turnKind: turnKind,
+      chainRoot: root,
+    )) {
+      switch (item) {
+        case CaughtUpWithTrajectory():
+          if (caughtUp) continue;
+          caughtUp = true;
+          if (lastOwnEntry(history) case final lastOwn?) {
+            chain.resumeAfter(lastOwn);
+          }
+          final last = lastPlace(history);
+          nextTurn = (last?.turn ?? -1) + 1;
+          latestOwn = last;
+          stdout.writeln('agent_loop: caught up at place ${last ?? 'none'}');
+          await doOwed();
+        case TrajectoryEvent event:
+          history.add(event);
+          if (!caughtUp) continue;
+          await doOwed();
+      }
     }
+    throw const FeedEnded("the trajectory's history");
   }
+
+  // The results can end while the history waits on its next event.
+  return Future.any([follow(), link.ended]);
 }
 
 final class _Options {

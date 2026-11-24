@@ -22,6 +22,7 @@ import 'package:is_airlock_api/is_airlock_api.dart'
 import 'package:is_logbook_client/is_logbook_client.dart' show Kind;
 import 'package:is_shapes/is_shapes.dart' show EntryId;
 
+import 'loop_exit.dart' show FeedEnded;
 import 'trajectory_chain.dart';
 
 final _proposedKind = Kind.parse(ActionProposedByAgentLoop.kind)!;
@@ -53,19 +54,38 @@ final class TrajectoryCrux implements ProposesActionsThroughTheLogbook {
           _arrived[result.proposed] = result;
         }
       },
-      onDone: () {
-        for (final waiting in _waiting.values) {
-          waiting.completeError(
-            StateError("the logbook's result entries ended first"),
-          );
-        }
-        _waiting.clear();
-      },
+      onError: _end,
+      onDone: () => _end(
+        const FeedEnded("the logbook's result entries"),
+        StackTrace.current,
+      ),
+      cancelOnError: true,
     );
+    // Marked handled here: [ended] hands the failure to whoever waits on it.
+    _ended.future.ignore();
   }
 
   final TrajectoryChain chain;
   late final StreamSubscription<ReturnedResult> _subscription;
+  final _ended = Completer<Never>();
+
+  /// The failure the results ended with, once they have: every outcome
+  /// still awaited, or asked for later, fails with it.
+  (Object, StackTrace)? _failure;
+
+  /// Fails once the results stop: with their error, or [FeedEnded] if
+  /// they simply ended. Never completes otherwise.
+  Future<Never> get ended => _ended.future;
+
+  void _end(Object error, StackTrace trace) {
+    _failure ??= (error, trace);
+    for (final waiting in _waiting.values) {
+      waiting.completeError(error, trace);
+    }
+    _waiting.clear();
+    if (!_ended.isCompleted) _ended.completeError(error, trace);
+  }
+
   final _arrived = <EntryId, ReturnedResult>{};
   final _waiting = <EntryId, Completer<ReturnedResult>>{};
 
@@ -100,8 +120,12 @@ final class TrajectoryCrux implements ProposesActionsThroughTheLogbook {
 
   @override
   Future<String> outcomeNaming(EntryId proposed) async {
+    final arrived = _arrived.remove(proposed);
+    if (_failure case (final error, final trace)? when arrived == null) {
+      Error.throwWithStackTrace(error, trace);
+    }
     final result =
-        _arrived.remove(proposed) ??
+        arrived ??
         await (_waiting[proposed] ??= Completer<ReturnedResult>()).future;
     final place = _placeOf.remove(proposed);
     if (place != null) _resultEntries[place] = result.resultEntry;

@@ -20,6 +20,7 @@
 library;
 
 export 'src/logbook_writer.dart';
+export 'src/loop_exit.dart';
 export 'src/model_request_input.dart';
 export 'src/reply.dart';
 export 'src/tool_action.dart';

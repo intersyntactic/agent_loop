@@ -13,7 +13,7 @@ import 'package:is_airlock_api/is_airlock_api.dart'
 import 'package:is_logbook/is_logbook.dart';
 import 'package:is_logbook/service.dart';
 import 'package:is_logbook_client/is_logbook_client.dart'
-    show Entry, LogbookReader;
+    show Entry, LogbookReader, ReadUnreachable;
 import 'package:is_logbook_client/is_logbook_client.dart' as client;
 import 'package:is_shapes/is_shapes.dart' show EntryId;
 import 'package:test/test.dart';
@@ -124,5 +124,42 @@ void main() {
 
     await crux.close();
     await returned.close();
+  });
+
+  test('a read failure on the results fails the outcome awaited, any asked '
+      'for later, and ended', () async {
+    final returned = StreamController<ReturnedResult>();
+    final crux = TrajectoryCrux(
+      chain: chainFromRoot(),
+      returned: returned.stream,
+    );
+
+    final first = await crux.writeProposal(_proposal(3));
+    final awaited = crux.outcomeNaming(first);
+    returned.addError(const ReadUnreachable('socket: gone'));
+
+    await expectLater(awaited, throwsA(isA<ReadUnreachable>()));
+    final second = await crux.writeProposal(_proposal(4));
+    await expectLater(
+      crux.outcomeNaming(second),
+      throwsA(isA<ReadUnreachable>()),
+    );
+    await expectLater(crux.ended, throwsA(isA<ReadUnreachable>()));
+    await returned.close();
+  });
+
+  test('results that simply end fail ended with FeedEnded, and an outcome '
+      'asked for after never hangs', () async {
+    final returned = StreamController<ReturnedResult>();
+    final crux = TrajectoryCrux(
+      chain: chainFromRoot(),
+      returned: returned.stream,
+    );
+
+    await returned.close();
+
+    await expectLater(crux.ended, throwsA(isA<FeedEnded>()));
+    final id = await crux.writeProposal(_proposal(5));
+    await expectLater(crux.outcomeNaming(id), throwsA(isA<FeedEnded>()));
   });
 }
