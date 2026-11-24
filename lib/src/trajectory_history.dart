@@ -47,22 +47,29 @@ import 'package:is_effects/is_effects.dart'
         FinishedReply,
         ModelAndSignIn,
         ModelReply,
-        BytesBody,
-        NoBody,
+        NothingRan,
         Outcome,
+        ProposedToolCalls,
         Ran,
-        Refused,
-        TextBody,
+        StoppedPartway,
+        ToolCall,
         WebResponse,
         decodeModelReply,
         decodeOutcome,
         decodeWebResponse;
+import 'package:is_model_vocabulary/is_model_vocabulary.dart'
+    show
+        AgentCalledTools,
+        AgentSaid,
+        ModelTurn,
+        ToolAnswered,
+        ToolResult,
+        UserSaid;
 import 'package:is_shapes/is_shapes.dart' show ActorId, EntryId, TrajectoryId;
 import 'package:is_tools_api/is_tools_api.dart' show OneActionTool;
 
-import 'model_request_input.dart'
-    show ModelInputRole, ModelInputTurn, inputTurnOf;
-import 'tool_call_text.dart';
+import 'model_request_input.dart' show inputTurnOf;
+import 'tool_calls.dart';
 import 'turn_envelope.dart';
 
 /// What [followTrajectoryHistory] hands on: each [TrajectoryEvent] in
@@ -86,7 +93,7 @@ sealed class TrajectoryEvent extends TrajectoryFeedItem {
   const TrajectoryEvent({required this.hash});
 
   /// The logbook entry this event was read from: what a
-  /// [ModelRequest.builtFrom] names for it.
+  /// [ModelRequestFromPieces.builtFrom] names for it.
   final ObjectId hash;
 }
 
@@ -139,19 +146,16 @@ final class ModelCallRefused extends TrajectoryEvent {
 }
 
 /// The airlock's outcome for a tool's fetch this loop proposed, [proposed],
-/// as the model is shown it: [text], which [isError] marks as why the fetch
-/// gave nothing rather than what it fetched.
+/// as the model hears it: [result] ([fetchResult]).
 final class FetchEnded extends TrajectoryEvent {
   const FetchEnded({
     required super.hash,
     required this.proposed,
-    required this.text,
-    required this.isError,
+    required this.result,
   });
 
   final ObjectId proposed;
-  final String text;
-  final bool isError;
+  final ToolResult result;
 }
 
 /// The program a proposal runs, as far as the loop tells them apart.
@@ -286,17 +290,9 @@ Stream<TrajectoryFeedItem> followTrajectoryHistory(
     if (entry.kind == _outcomeKind) {
       if (_fetchEndIn(entry.body, fetches) case (
         :final proposed,
-        :final text,
-        :final isError,
+        :final result,
       )) {
-        return [
-          FetchEnded(
-            hash: entry.id,
-            proposed: proposed,
-            text: text,
-            isError: isError,
-          ),
-        ];
+        return [FetchEnded(hash: entry.id, proposed: proposed, result: result)];
       }
       return switch (_modelCallEndIn(entry.body, modelCalls)) {
         null => const [],
@@ -379,7 +375,7 @@ TrajectoryEvent _startedUnder(
       proposed: proposed,
       reply: switch (decodeOutcome(outcome.result, decodeModelReply)) {
         Ran(:final output) => output,
-        Refused() => null,
+        NothingRan() || StoppedPartway() => null,
       },
     );
   } on FormatException {
@@ -388,31 +384,18 @@ TrajectoryEvent _startedUnder(
 }
 
 /// The end of one of [fetches] in [body], an outcome entry's: the fetch it
-/// answers, and its result as the model is shown it. Null for an outcome of
+/// answers, and what the model hears about it. Null for an outcome of
 /// anything else.
-({ObjectId proposed, String text, bool isError})? _fetchEndIn(
+({ObjectId proposed, ToolResult result})? _fetchEndIn(
   List<int> body,
   Set<EntryId> fetches,
 ) {
   final outcome = readOutcomeOfProposedAction(_text(body));
   if (outcome == null || !fetches.contains(outcome.proposed)) return null;
-  final proposed = ObjectId.parse(outcome.proposed.hex)!;
-  final (text, isError) = switch (_decodedFetch(outcome.result)) {
-    null => ('its outcome could not be read', true),
-    Refused(:final why) => ('the fetch was refused: $why', true),
-    Ran(output: WebResponse(:final status, :final refusedBecause))
-        when status < 200 || status > 299 =>
-      (
-        'the site answered $status: ${refusedBecause ?? 'no reason given'}',
-        true,
-      ),
-    Ran(output: WebResponse(body: TextBody(:final text))) => (text, false),
-    Ran(output: WebResponse(body: NoBody() || BytesBody())) => (
-      'the site answered with no text',
-      true,
-    ),
-  };
-  return (proposed: proposed, text: text, isError: isError);
+  return (
+    proposed: ObjectId.parse(outcome.proposed.hex)!,
+    result: fetchResult(_decodedFetch(outcome.result)),
+  );
 }
 
 /// [result] read as a fetch's outcome, or null when it doesn't decode.
@@ -439,10 +422,10 @@ String _text(List<int> body) => utf8.decode(body, allowMalformed: true);
 /// Throws [FormatException] for a [TurnOnChain] whose node shape it doesn't
 /// know.
 ///
-/// A reply that calls a tool is followed by the call's result, as the next
-/// user turn: the fetch's, once it has ended, or why the call could not
-/// run, which needs no fetch. [tools] are the trajectory's, by name.
-List<ModelInputTurn> trajectoryInput(
+/// A reply that calls tools is followed by one answer per call, in the
+/// order it made them: its fetch's result, why it can't run, or that it was
+/// never run. [tools] are the trajectory's, by name.
+List<ModelTurn> trajectoryInput(
   List<TrajectoryEvent> history, {
   required Map<String, OneActionTool> tools,
 }) {
@@ -454,29 +437,30 @@ List<ModelInputTurn> trajectoryInput(
   return [
     for (final event in history)
       ...switch (event) {
-        SaidByUser(:final text) => [ModelInputTurn(ModelInputRole.user, text)],
-        ActionProposed(asksTheModel: true, :final hash) => [
-          if (replies[hash] case final reply?) ...[
-            switch (reply) {
-              FinishedReply(:final text) => ModelInputTurn(
-                ModelInputRole.assistant,
-                text,
-              ),
-              CutOffReply(:final text) => ModelInputTurn(
-                ModelInputRole.assistant,
-                '$text\n\n$_cutOffNote',
-              ),
+        SaidByUser(:final text) => [UserSaid(text)],
+        ActionProposed(asksTheModel: true, :final hash, :final place) => [
+          if (replies[hash] case final reply?)
+            ...switch (reply) {
+              FinishedReply(:final text) => [AgentSaid(text)],
+              CutOffReply(:final text) => [AgentSaid('$text\n\n$_cutOffNote')],
+              ProposedToolCalls(
+                :final text,
+                :final calls,
+                :final continuation,
+              ) =>
+                [
+                  AgentCalledTools(
+                    text: text,
+                    calls: calls,
+                    continuation: continuation,
+                  ),
+                  for (final (i, call) in calls.indexed)
+                    ToolAnswered(
+                      callId: call.id,
+                      result: _answerTo(history, place.turn, i, call, tools),
+                    ),
+                ],
             },
-            if (_toolResult(history, event, reply, tools) case (
-              :final name,
-              :final text,
-              :final isError,
-            ))
-              ModelInputTurn(
-                ModelInputRole.user,
-                toolResultText(text, name: name, isError: isError),
-              ),
-          ],
         ],
         TurnOnChain(:final turn) => [inputTurnOf(turn)],
         ActionProposed() ||
@@ -489,45 +473,33 @@ List<ModelInputTurn> trajectoryInput(
   ];
 }
 
-/// The tool call [reply], to the model call [call], makes, read against
-/// [tools]: null when it calls none, or calls one whose fetch hasn't ended
-/// in [history].
-({String name, String text, bool isError})? _toolResult(
+/// What the model hears about [call], the [index]th call of [turn]'s reply,
+/// read against [tools]: why it can't run, its fetch's result once ended,
+/// or [notRun].
+ToolResult _answerTo(
   List<TrajectoryEvent> history,
-  ActionProposed call,
-  ModelReply reply,
+  int turn,
+  int index,
+  ToolCall call,
   Map<String, OneActionTool> tools,
-) {
-  final toolCall = _toolCallIn(reply, tools);
-  if (toolCall == null) return null;
-  final (:name, tool: _, :why) = toolCall;
-  if (why != null) return (name: name, text: why, isError: true);
-  final fetch = _fetchAt(history, _toolActionPlace(call.place.turn));
-  final end = fetch == null ? null : _fetchEnd(history, fetch);
-  return end == null
-      ? null
-      : (name: name, text: end.text, isError: end.isError);
-}
-
-/// The tool call [reply] makes, read against [tools]: the tool's name and
-/// the tool, or the name and why it can't run, which the model is told.
-/// Null when [reply] answers rather than calls. An unreadable call has no
-/// name, so its result has none either.
-({String name, OneActionTool? tool, String? why})? _toolCallIn(
-  ModelReply reply,
-  Map<String, OneActionTool> tools,
-) => switch (readModelReply(reply.text)) {
-  AnswerText() => null,
-  ToolCallUnreadable(:final why) => (name: '', tool: null, why: why),
-  final CallsTool call => switch (toolCalled(call, tools)) {
-    (:final tool, :final why) => (name: call.name, tool: tool, why: why),
+) => switch (toolCalled(call, tools)) {
+  CallCannotRun(:final result) => result,
+  CallRuns() => switch (_fetchAt(history, _callPlace(turn, index))) {
+    null => notRun,
+    final fetch => _fetchEnd(history, fetch)?.result ?? notRun,
   },
 };
 
-/// Where a turn's one tool call proposes its tool's one action: a reply
-/// holds one call, so its intent is 0, and a one-action tool's action is 0.
-ProposedForAnIntent _toolActionPlace(int turn) =>
-    ProposedForAnIntent.at(turn, 0, 0);
+/// The calls [reply] makes, or null when it makes none.
+List<ToolCall>? _callsIn(ModelReply reply) => switch (reply) {
+  ProposedToolCalls(:final calls) => calls,
+  FinishedReply() || CutOffReply() => null,
+};
+
+/// Where the [index]th call of [turn]'s reply proposes its tool's one
+/// action: each call is its own intent, and a one-action tool's action is 0.
+ProposedForAnIntent _callPlace(int turn, int index) =>
+    ProposedForAnIntent.at(turn, index, 0);
 
 /// The fetch this loop proposed at [place] in [history], if any.
 ActionProposed? _fetchAt(
@@ -643,10 +615,11 @@ const maxModelCallsPerMessage = 8;
 /// null while anything it proposed, up to [latestOwn], is still under way,
 /// and when nothing is owed.
 ///
-/// A tool call the latest reply makes is run first, so its result is in
-/// the request that follows, even when a message arrived meanwhile. Then a
-/// message still unanswered is owed a model call, and so is a tool call's
-/// result, until the message has caused [maxModelCallsPerMessage] calls.
+/// The calls the latest reply makes are run first, one at a time in the
+/// order it made them, so their results are in the request that follows,
+/// even when a message arrived meanwhile. Then a message still unanswered
+/// is owed a model call, and so are the calls' results, until the message
+/// has caused [maxModelCallsPerMessage] calls.
 StepOwed? stepOwed(
   List<TrajectoryEvent> history, {
   required Map<String, OneActionTool> tools,
@@ -663,20 +636,22 @@ StepOwed? stepOwed(
             .whereType<SaidByAgent>()
             .where((e) => e.proposed == call.hash)
             .firstOrNull;
-  final toolCall = reply == null ? null : _toolCallIn(reply.reply, tools);
+  final calls = reply == null ? null : _callsIn(reply.reply);
   final spent = _modelCallsSinceMessage(history) >= maxModelCallsPerMessage;
-  if (call != null && !spent) {
-    if (toolCall case (tool: final tool?, why: null, name: _)) {
-      final place = _toolActionPlace(call.place.turn);
-      if (_fetchAt(history, place) == null) {
-        return ToolActionOwed(place: place, tool: tool);
+  if (call != null && calls != null && !spent) {
+    for (final (i, toolCall) in calls.indexed) {
+      if (toolCalled(toolCall, tools) case CallRuns(:final tool)) {
+        final place = _callPlace(call.place.turn, i);
+        if (_fetchAt(history, place) == null) {
+          return ToolActionOwed(place: place, tool: tool);
+        }
       }
     }
   }
   if (unansweredTurn(history) case final message?) {
     return ModelCallOwed(after: message.hash);
   }
-  if (call == null || reply == null || toolCall == null) return null;
+  if (call == null || reply == null || calls == null) return null;
   if (spent) {
     final replied = history.whereType<ActionProposed>().any(
       (e) => e.place is ProposedForTheReply && e.place.turn == call.place.turn,
@@ -710,7 +685,7 @@ final class ModelCallOwed extends StepOwed {
   final ObjectId after;
 }
 
-/// Propose [tool]'s action at [place]: the latest reply called it.
+/// Propose [tool]'s action at [place]: a call in the latest reply named it.
 final class ToolActionOwed extends StepOwed {
   const ToolActionOwed({required this.place, required this.tool});
 
@@ -719,7 +694,7 @@ final class ToolActionOwed extends StepOwed {
 }
 
 /// The latest message has caused [maxModelCallsPerMessage] model calls, and
-/// [turn]'s reply still calls a tool: say so, as [turn]'s reply, and ask
+/// [turn]'s reply still calls tools: say so, as [turn]'s reply, and ask
 /// nothing more until another message arrives.
 final class ModelCallsSpent extends StepOwed {
   const ModelCallsSpent({required this.turn});

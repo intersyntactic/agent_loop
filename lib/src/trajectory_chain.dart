@@ -153,7 +153,7 @@ String? _loopUserOf(List<int> body) {
 }
 
 /// Every turn on the chain descending from [chainRoot], live, each with its
-/// own entry hash (what a later [ModelRequest.builtFrom] names, so it
+/// own entry hash (what a later [ModelRequestFromPieces.builtFrom] names, so it
 /// points at the turn actually recorded, not a hash reconstructed from its
 /// decoded body — which would not match, since an entry's hash covers its
 /// `<kind>\n<previous>\n` header too). Reads the backlog, then every new

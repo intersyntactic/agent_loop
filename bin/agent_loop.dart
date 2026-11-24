@@ -28,19 +28,20 @@
 /// decides what to do. A refused reply is only logged: the way back to the
 /// person is what failed.
 ///
-/// The model is shown the tools the trajectory's rules give it
-/// ([toolsPrompt]). A reply that calls one ends its turn with the tool's
-/// action, proposed at the turn's one intent ([toolAction]); the next turn
-/// asks the model again with the result. What to do next is always read
-/// from the history ([stepOwed]), so a restarted loop picks up a tool call
-/// where it left off.
+/// The model is offered the tools the trajectory's rules give it, inside
+/// the request ([offeredTools]). A reply that calls tools ends its turn
+/// with each call's action, one at a time, each call at its own intent
+/// ([toolAction]); the next turn asks the model again with every call's
+/// result. What to do next is always read from the history ([stepOwed]),
+/// so a restarted loop picks up its calls where it left off.
 library;
 
 import 'dart:io';
 
 import 'package:agent_loop/agent_loop.dart';
 import 'package:is_effects/is_effects.dart'
-    show ModelReply, ModelUsage, ProgramName;
+    show ModelReply, ModelUsage, ProgramName, ProposedToolCalls;
+import 'package:is_model_vocabulary/is_model_vocabulary.dart' show ModelRequest;
 import 'package:is_airlock_api/is_airlock_api.dart'
     show
         Action,
@@ -62,18 +63,11 @@ import 'package:is_logbook_client/is_logbook_client.dart'
 import 'package:is_shapes/is_shapes.dart' show EntryId;
 import 'package:is_tools_api/is_tools_api.dart' show OneActionTool;
 
-/// A fixed, labelled placeholder for what the system prompt says before
-/// its tools: enough to exercise recording for real, not what a demo's
-/// system prompt will actually say.
+/// A fixed, labelled placeholder for the system prompt: enough to exercise
+/// recording for real, not what a demo's system prompt will actually say.
+/// The tools travel in the request, not here.
 const _placeholderSystemPrompt =
     'You are the agent in this conversation. Reply in plain text.';
-
-/// The system prompt for a trajectory given [tools]: constant for the
-/// trajectory, since its rules are.
-String _systemPrompt(Map<String, OneActionTool> tools) => [
-  _placeholderSystemPrompt,
-  if (tools.isNotEmpty) toolsPrompt(tools.values),
-].join('\n\n');
 
 const _turnKind = 'turn';
 
@@ -209,10 +203,13 @@ Future<Never> _run(_Options options) async {
       return;
     }
     final given = tools();
-    final request = encodeModelInput(trajectoryInput(history, tools: given));
+    final request = ModelRequest(
+      tools: offeredTools(given.values),
+      turns: trajectoryInput(history, tools: given),
+    ).encode();
     final requestHash = await recordModelRequestOnTrajectory(
       chain,
-      systemPrompt: _systemPrompt(given),
+      systemPrompt: _placeholderSystemPrompt,
       request: request,
       builtFrom: [for (final e in history) e.hash],
     );
@@ -220,7 +217,7 @@ Future<Never> _run(_Options options) async {
 
     final turn = nextTurn++;
     latestOwn = ProposedForTheModelCall.at(turn);
-    final asked = Program.askTheModel.runOrRefusal<ModelReply>(
+    final asked = Program.askTheModel.runOrFail<ModelReply>(
       ModelCall(
         signIn: model.signIn,
         model: model.model,
@@ -234,7 +231,9 @@ Future<Never> _run(_Options options) async {
     switch (outcome) {
       case Done(:final value):
         stdout.writeln('agent_loop: model replied: ${value.text}');
-        if (readModelReply(value.text) is! AnswerText) return;
+        // Calls are run, and their results asked about, before anyone is
+        // answered.
+        if (value is ProposedToolCalls) return;
         await sayBack(
           turn,
           value.text,
@@ -242,16 +241,12 @@ Future<Never> _run(_Options options) async {
           usage: value.usage,
         );
       case Failed(:final why):
-        stdout.writeln('agent_loop: model call refused: $why');
-        await sayBack(
-          turn,
-          'The model call was refused: $why',
-          'refusal notice',
-        );
+        stdout.writeln('agent_loop: model call failed: $why');
+        await sayBack(turn, 'The model call failed: $why', 'failure notice');
       case Action():
-        // runOrRefusal's own then never returns one: it is called only
-        // with the output, never asked to propose a further action.
-        throw StateError('runOrRefusal returned an unresolved Action');
+        // runOrFail's own then never returns one: it is called only with
+        // the output, never asked to propose a further action.
+        throw StateError('runOrFail returned an unresolved Action');
     }
   }
 

@@ -50,7 +50,7 @@ Action<int> replyActions({
   required SignIn signIn,
   required TrajectoryId trajectory,
   required int turn,
-}) => drawing.runOrRefusal(
+}) => drawing.runOrFail(
   drawingArgs(
     text: text,
     usage: usage,
@@ -61,11 +61,10 @@ Action<int> replyActions({
   ),
   then: (ExecResult drawn) => switch (drawn) {
     Exited(exitCode: 0, :final stdout) => switch (requestsIn(stdout)) {
-      (requests: final requests?, why: _) =>
-        Program.makeWebRequests.runOrRefusal(
-          requests,
-          then: (responses) => Done(responses.length),
-        ),
+      (requests: final requests?, why: _) => Program.makeWebRequests.runOrFail(
+        requests,
+        then: (responses) => Done(responses.length),
+      ),
       (requests: null, :final why) => Failed(
         '${drawing.name} printed no requests: $why',
       ),

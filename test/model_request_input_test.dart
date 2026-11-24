@@ -1,13 +1,12 @@
-// Proves a model request's turns encode as the JSON array of Responses API
-// input items the drivers take: real turns, oldest first, no system item.
-import 'dart:convert' show jsonDecode;
-
+// Proves a turn the loop wrote on its own chain becomes the model turn
+// every driver reads: a user's or the agent's, oldest first.
 import 'package:agent_loop/agent_loop.dart';
+import 'package:is_model_vocabulary/is_model_vocabulary.dart' show ModelRequest;
 import 'package:test/test.dart';
 
 void main() {
-  test('UserSaid and ReplyText turns become user and assistant items, '
-      'oldest first', () {
+  test('UserSaid and ReplyText turns become user and agent turns, oldest '
+      'first', () {
     final turns = [
       const TurnEnvelope(
         node: {
@@ -25,11 +24,13 @@ void main() {
     ];
 
     expect(
-      jsonDecode(encodeModelInput([for (final t in turns) inputTurnOf(t)])),
-      [
-        {'role': 'user', 'content': 'hey are you there'},
-        {'role': 'assistant', 'content': 'yep, here'},
-      ],
+      ModelRequest(
+        tools: const [],
+        turns: [for (final t in turns) inputTurnOf(t)],
+      ).encode(),
+      '{"tools":[],"turns":['
+      '{"kind":"user","text":"hey are you there"},'
+      '{"kind":"agent","text":"yep, here"}]}',
     );
   });
 
