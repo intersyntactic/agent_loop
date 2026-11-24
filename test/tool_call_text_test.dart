@@ -79,49 +79,51 @@ void main() {
   });
 
   test('the prompt shows a tool by its name, description and input schema '
-      'alone, never its bound values or steps', () {
-    final prompt = toolsPrompt([_readDocument]);
+      'alone, never what it fetches or who it goes as', () {
+    final prompt = toolsPrompt([_listCaseFolder]);
     expect(prompt, contains('<tool_call>'));
     final line = prompt.split('\n').last;
     expect(jsonDecode(line), {
-      'name': 'read_document',
-      'description': 'Reads a Word document from the reports folder.',
-      'input_schema': jsonDecode(jsonEncode(_readDocument.input.schema)),
+      'name': 'list_case_folder',
+      'description': 'Lists the case folder. Returns the first page only.',
+      'input_schema': jsonDecode(jsonEncode(_listCaseFolder.input.schema)),
     });
     expect(prompt, isNot(contains('b!xyz')));
-    expect(prompt, isNot(contains('readDocument')));
+    expect(prompt, isNot(contains('graph.microsoft.com')));
+    expect(prompt, isNot(contains('enspyr-test')));
     expect(toolsPrompt(const []), isEmpty);
   });
 
-  group('fillToolCall', () {
-    test('fills a call to a tool in bound, input and literal order', () {
-      final read = readModelReply(
-        '<tool_call>{"name": "read_document", "input": {"name": "Q3.docx"}}'
-        '</tool_call>',
+  group('toolCalled', () {
+    final tools = {
+      for (final tool in [_listCaseFolder, _search]) tool.name: tool,
+    };
+
+    test('finds the tool a call names', () {
+      final call = readModelReply(
+        '<tool_call>{"name": "list_case_folder"}</tool_call>',
       );
-      final (:filled, :why) = fillToolCall(read as CallsTool, [_readDocument]);
+      final (:tool, :why) = toolCalled(call as CallsTool, tools);
       expect(why, isNull);
-      expect(filled!.tool, same(_readDocument));
-      expect(filled.arguments, ['b!xyz', 'Q3.docx', 5000]);
+      expect(tool, same(_listCaseFolder));
     });
 
     test('a call to a tool not given is refused, naming it', () {
       final call = readModelReply(
         '<tool_call>{"name": "delete_everything"}</tool_call>',
       );
-      final (:filled, :why) = fillToolCall(call as CallsTool, [_readDocument]);
-      expect(filled, isNull);
+      final (:tool, :why) = toolCalled(call as CallsTool, tools);
+      expect(tool, isNull);
       expect(why, contains('"delete_everything"'));
     });
 
     test('a call its input refuses is refused, naming the field', () {
       final call = readModelReply(
-        '<tool_call>{"name": "read_document", "input": {"name": 7}}'
-        '</tool_call>',
+        '<tool_call>{"name": "search", "input": {"words": 7}}</tool_call>',
       );
-      final (:filled, :why) = fillToolCall(call as CallsTool, [_readDocument]);
-      expect(filled, isNull);
-      expect(why, allOf(contains('read_document'), contains('name')));
+      final (:tool, :why) = toolCalled(call as CallsTool, tools);
+      expect(tool, isNull);
+      expect(why, allOf(contains('search'), contains('words')));
     });
   });
 
@@ -156,15 +158,28 @@ void main() {
   });
 }
 
-final _readDocument = OneActionTool.of(
-  name: 'read_document',
-  description: 'Reads a Word document from the reports folder.',
-  input: Input.field(Field('name', Schema.string())),
-  bound: {'drive': Literal.text('b!xyz')},
-  action: ActionName.of('readDocument'),
-  arguments: [
-    const BoundReference('drive'),
-    const InputReference('name'),
-    Literal.integer(5000),
-  ],
+final _graph = Origin.parse('https://graph.microsoft.com')!;
+final _testSignIn = SignIn.parse('enspyr-test')!;
+
+final _listCaseFolder = OneActionTool.of(
+  name: 'list_case_folder',
+  description: 'Lists the case folder. Returns the first page only.',
+  input: Input.none,
+  action: Fetch(
+    _graph,
+    WebPath.parse('/v1.0/drives/b!xyz/items/01F/children')!,
+    _testSignIn,
+  ),
+);
+
+/// A tool whose input has a field, so a call can break it.
+final _search = OneActionTool.of(
+  name: 'search',
+  description: 'Searches the case folder.',
+  input: Input.field(Field('words', Schema.string())),
+  action: Fetch(
+    _graph,
+    WebPath.parse('/v1.0/drives/b!xyz/items/01F/children')!,
+    _testSignIn,
+  ),
 );

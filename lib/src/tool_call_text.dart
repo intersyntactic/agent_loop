@@ -1,8 +1,8 @@
 /// How the model calls a tool when a model call carries text alone: the
 /// system prompt shows it each tool's definition and how to call one
-/// ([toolsPrompt]), each reply is read with [readModelReply], and a call's
-/// arguments are filled in by [fillToolCall], and a call's result goes back
-/// to the model as the next user turn ([toolResultText]).
+/// ([toolsPrompt]), each reply is read with [readModelReply], a call is
+/// matched to its tool by [toolCalled], and a call's result goes back to
+/// the model as the next user turn ([toolResultText]).
 ///
 /// One call per reply, and the call ends it, so a turn's steps stay in the
 /// order the model asked for them.
@@ -92,10 +92,10 @@ ReadModelReply readModelReply(String text) {
 }
 
 /// The model's instructions for calling [tools], each shown by its name,
-/// description and input schema only: a tool's bound values and steps are
-/// a person's choices, and never reach the model. Empty when there are no
-/// tools.
-String toolsPrompt(List<OneActionTool> tools) {
+/// description and input schema only: a tool's action, such as the
+/// address it fetches and who it goes as, is a person's choice and never
+/// reaches the model. Empty when there are no tools.
+String toolsPrompt(Iterable<OneActionTool> tools) {
   if (tools.isEmpty) return '';
   return [
     'You can call these tools. To call one, end your reply with exactly one '
@@ -123,22 +123,22 @@ String toolsPrompt(List<OneActionTool> tools) {
   ].join('\n');
 }
 
-/// [call] carried against [tools]: the tool it names and its action's
-/// arguments, or null and why, which the model is told as the call's error
-/// result.
-({({OneActionTool tool, List<Object> arguments})? filled, String? why})
-fillToolCall(CallsTool call, List<OneActionTool> tools) {
-  final tool = tools.where((t) => t.name == call.name).firstOrNull;
+/// The tool among [tools], keyed by name, that [call] names, with its input
+/// read by the tool's own [OneActionTool.input]; or null and why, which the
+/// model is told as the call's error result.
+({OneActionTool? tool, String? why}) toolCalled(
+  CallsTool call,
+  Map<String, OneActionTool> tools,
+) {
+  final tool = tools[call.name];
   if (tool == null) {
-    return (filled: null, why: 'there is no tool named "${call.name}"');
+    return (tool: null, why: 'there is no tool named "${call.name}"');
   }
   try {
-    return (
-      filled: (tool: tool, arguments: tool.argumentsFor(call.input)),
-      why: null,
-    );
+    tool.input.read(call.input);
+    return (tool: tool, why: null);
   } on JsonFieldException catch (e) {
-    return (filled: null, why: '${tool.name}\'s input: ${e.message}');
+    return (tool: null, why: '${tool.name}\'s input: ${e.message}');
   }
 }
 
