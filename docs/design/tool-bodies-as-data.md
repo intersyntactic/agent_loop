@@ -586,14 +586,17 @@ the model would see a listing cut short with nothing to say so. A
 listing that silently drops items is worse than a refusal. The steps, in
 order (airlock-api-b3):
 
-1. **Always, and ships with stage 1: a "first page only" notice** whenever
-   the response carries `@odata.nextLink`. It costs nothing in the rules.
-   Still open is who writes it without putting Graph knowledge into the
-   loop. The raw JSON the model reads already contains `@odata.nextLink`,
-   so the model can see that more exists, but only if it knows what that
-   means. Options: the tool's description says so, which is module text
-   written for its tool; or the frame names a page marker the module
-   declares. It isn't the loop recognising Graph's field.
+1. **Always, and ships with stage 1: a "first page only" notice.** It
+   costs nothing in the rules. The module's tool description states it
+   every time, for example: "Returns the first page only. If the result
+   contains @odata.nextLink, the folder has more items than shown." The raw
+   JSON the model reads already carries the marker, and the description
+   tells the model what it means. That's text the module owns about its own
+   tool, so no Graph knowledge enters the loop and nothing touches the
+   airlock. A page marker declared to the loop's frame would add a
+   mechanism with nothing to gain in stage 1. That waits for stage 2,
+   where a tool's results may need the loop to act on them (agreed by
+   airlock-api-b3 and agent-loop-21).
 2. **If CAM's folders are bigger than one page: a whole-number query rule
    for `$top` only**, digits with an upper bound. A number can't carry
    text, so it stays within what the word-list rule is for: it shapes the
