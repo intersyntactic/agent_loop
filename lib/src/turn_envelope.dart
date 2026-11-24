@@ -1,7 +1,7 @@
 /// What a turn's entry says, in the loop's own envelope: the node's shape
 /// and fields, alongside where it came from. Provenance lives here, not on
 /// the node, so every module that produces a node — `UserSaid` among them —
-/// stays free of journal concepts.
+/// stays free of logbook concepts.
 library;
 
 import 'dart:convert';
@@ -64,7 +64,7 @@ final class TurnEnvelope {
     utf8.encode(jsonEncode({'node': node, 'provenance': provenance.toJson()})),
   );
 
-  /// [bytes] as an envelope, as [encode] wrote it: a journal entry
+  /// [bytes] as an envelope, as [encode] wrote it: a logbook entry
   /// frame's body, header stripped. Throws a [FormatException] for
   /// anything else.
   static TurnEnvelope decode(Uint8List bytes) {
