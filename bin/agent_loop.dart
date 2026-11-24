@@ -41,7 +41,8 @@ import 'dart:io';
 import 'package:agent_loop/agent_loop.dart';
 import 'package:is_effects/is_effects.dart'
     show ModelReply, ModelUsage, ProgramName, ProposedToolCalls;
-import 'package:is_model_vocabulary/is_model_vocabulary.dart' show ModelRequest;
+import 'package:is_model_vocabulary/is_model_vocabulary.dart'
+    show ModelRequest, ToolName;
 import 'package:is_airlock_api/is_airlock_api.dart'
     show
         Action,
@@ -123,7 +124,7 @@ Future<Never> _run(_Options options) async {
   // history, nothing next is owed.
   PlaceInTrajectory? latestOwn;
 
-  Map<String, OneActionTool> tools() =>
+  Map<ToolName, OneActionTool> tools() =>
       history.whereType<TrajectoryStarted>().firstOrNull?.rules.givenTools ??
       const {};
 

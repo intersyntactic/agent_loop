@@ -26,20 +26,14 @@ import 'package:is_effects/is_effects.dart'
         WellFormedName;
 import 'package:is_model_vocabulary/is_model_vocabulary.dart'
     show OfferedTool, ToolFailed, ToolName, ToolRan, ToolRefused, ToolResult;
+
 import 'package:is_tools_api/is_tools_api.dart' show OneActionTool;
 
 /// [tools] as the model is shown them: name, description and input schema
 /// only. A tool's action, such as the address it fetches and who it goes
-/// as, is a person's choice and never reaches the model. A tool whose name
-/// breaks [ToolName]'s rule can't be offered, so it is left out.
+/// as, is a person's choice and never reaches the model.
 List<OfferedTool> offeredTools(Iterable<OneActionTool> tools) => [
-  for (final tool in tools)
-    if (ToolName.parse(tool.name) case final name?)
-      OfferedTool(
-        name: name,
-        description: tool.description,
-        inputSchema: tool.input.schema,
-      ),
+  for (final tool in tools) tool.offered,
 ];
 
 /// Whether a call the model made can run: [CallRuns] or [CallCannotRun].
@@ -65,9 +59,9 @@ final class CallCannotRun extends CallToTool {
 /// The tool among [tools], keyed by name, that [call] names, with its input
 /// read by the tool's own [OneActionTool.input]. A name that was never
 /// offered, well formed or not, can't run.
-CallToTool toolCalled(ToolCall call, Map<String, OneActionTool> tools) {
+CallToTool toolCalled(ToolCall call, Map<ToolName, OneActionTool> tools) {
   final tool = switch (call.name) {
-    WellFormedName(:final name) => tools[name.value],
+    WellFormedName(:final name) => tools[name],
     IllFormedName() => null,
   };
   if (tool == null) {

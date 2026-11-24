@@ -63,6 +63,7 @@ import 'package:is_model_vocabulary/is_model_vocabulary.dart'
         AgentSaid,
         ModelTurn,
         ToolAnswered,
+        ToolName,
         ToolResult,
         UserSaid;
 import 'package:is_shapes/is_shapes.dart' show ActorId, EntryId, TrajectoryId;
@@ -427,7 +428,7 @@ String _text(List<int> body) => utf8.decode(body, allowMalformed: true);
 /// never run. [tools] are the trajectory's, by name.
 List<ModelTurn> trajectoryInput(
   List<TrajectoryEvent> history, {
-  required Map<String, OneActionTool> tools,
+  required Map<ToolName, OneActionTool> tools,
 }) {
   final replies = {
     for (final event in history)
@@ -481,7 +482,7 @@ ToolResult _answerTo(
   int turn,
   int index,
   ToolCall call,
-  Map<String, OneActionTool> tools,
+  Map<ToolName, OneActionTool> tools,
 ) => switch (toolCalled(call, tools)) {
   CallCannotRun(:final result) => result,
   CallRuns() => switch (_fetchAt(history, _callPlace(turn, index))) {
@@ -622,7 +623,7 @@ const maxModelCallsPerMessage = 8;
 /// has caused [maxModelCallsPerMessage] calls.
 StepOwed? stepOwed(
   List<TrajectoryEvent> history, {
-  required Map<String, OneActionTool> tools,
+  required Map<ToolName, OneActionTool> tools,
   required PlaceInTrajectory? latestOwn,
 }) {
   if (!actionsSettled(history, latestOwn: latestOwn)) return null;
