@@ -613,8 +613,13 @@ order (airlock-api-b3):
    `nextLink` itself, copying Graph's token unchanged and never the
    model's. That's two steps, so stage 2, alongside the deferred reads.
 
-Question 1, (d): Nick hasn't decided. Stage 1 doesn't need it, either
-way.
+**Decided (Nick, 24 Nov 13:14, relayed by airlock-api-b3): (d) in
+principle.** A fetch tool's path is a `PathPattern` filled with whole
+values, ideally the grant's own pattern, with `fill`'s rule stated on
+`encode(v)` plus the suffix and tested both ways. **Nothing is built until
+reading by name returns:** no `fill`, and `PathPattern` doesn't move to
+is_web_address_vocabulary yet. Stage 1's listing tool uses a literal
+`WebPath`.
 
 The tool-call text format, `<tool_call>{"name", "input"}</tool_call>`
 (agent_loop branch `feat/tool-calls-as-text`), serves both stages. In stage 2
