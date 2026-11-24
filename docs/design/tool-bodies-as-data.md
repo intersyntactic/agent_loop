@@ -381,6 +381,26 @@ the trajectory's rules. **What a tool grants is closed-loop composition:** its
 steps can condition later actions on earlier outcomes (fetch, branch, send)
 without a model turn, and without the airlock seeing the sequence as a whole.
 
+**What "the airlock decides" covers, reach by reach** (the airlock's
+`GrantsReaches.decide`, `lib/src/decide_reach.dart`, at airlock v0.4.3):
+- a fetch, a web request or a model call is checked against
+  `whatMayLeaveThisMachine`;
+- a program start is checked against `programsItMayRun`, from airlock
+  v0.4.3 (https://github.com/intersyntactic/airlock/commit/c7c84fd54358cc21fb794d0549fb530189e286eb).
+  Before it, `decide` was handed only `whatMayLeaveThisMachine`, so every
+  `Starts` was allowed unchecked and labelled `DecidedBy.rules`
+  (airlock-api-b3's finding, 24 Nov 15:34). A suit on
+  `sharesThisMachinesNetwork` shares the box's network, so that was a way
+  around every web grant. Any claim here that the airlock limits which
+  programs run holds only where v0.4.3 or later is deployed;
+- a file read or write is allowed with no check, since by itself it
+  carries nothing off the machine. No file-path rule exists at run time.
+
+So the rules-time checks in is_flight_rules (a given tool must be
+reachable; later, a tool's program must be in `programsItMayRun`) say what
+the rules may contain, and the airlock's run-time decision is what holds
+each action to them. A check exists only where both are in place.
+
 A model-written tool calls only the trajectory's **given tools**, each with
 the bound values a person set, and never a raw action. So composition adds
 no reach at the tool level either: anything a level-1 tool does, the model
@@ -513,7 +533,9 @@ agent-loop-21):
 - `RunExecutable(ProgramName)` comes back in the same change as
   `FlightRules`' check that a given tool's program is in
   `programsItMayRun`. That's the rule it already applies to
-  `programsItNeeds`, and a case can't land without its check.
+  `programsItNeeds`, and a case can't land without its check. At run
+  time it relies on airlock v0.4.3 or later, the first to check a start
+  against `programsItMayRun`.
 - Never as tool actions: model calls, which would nest model calls and let
   case text leave on a tool's say-so; `make-web-requests`, since posting
   changes the world and the Teams send is the loop's reply step; and
@@ -552,13 +574,17 @@ ships on the is_tools_api release that has `ToolAction`, not on 0.3.0,
 whose action is free text. Otherwise free-text actions would be written
 into flight-rules.json and need replacing straight away.
 
-**Optional (flight-rules-af):** once a fetch tool's origin and path are
-typed and fixed, `FlightRules` can refuse a given tool whose path no
-grant in `fetchesMayReach` could ever match, judged on origin and path
-only, since the sign-in depends on leases and is decided at run time.
-"This tool can never work" then shows up when the rules are written, not
-as refusals mid-turn. It fails closed either way, so this is a nicety,
-not a hole.
+**Shipped in is_flight_rules 0.6.0 (flight-rules-af):** `FlightRules`
+refuses a given tool that no grant in `fetchesMayReach` could ever let
+out (`WhatMayLeaveThisMachine.couldEverFetch`), so "this tool can never
+work" shows up when the rules are written, not as refusals mid-turn. A
+grant counts only when its pattern covers the tool's origin and path
+**and** its sign-in could be the tool's (documents-module-21):
+`GoesAsNobody` only for a tool with no sign-in, `GoesAsSignIn` only when
+its sign-in equals the tool's, and `GoesAsBotLeasedFrom` for any sign-in,
+since which bot is leased is known only when the fetch runs. The airlock
+still decides each fetch at run time; this check only catches early what
+would be refused anyway.
 
 **`readDocument` is a `fetch`** under documents_module's
 `FromPathsMatching` grant. It isn't a new built-in, which would put
@@ -709,9 +735,22 @@ reading by name returns:** no `fill`, and `PathPattern` doesn't move to
 is_web_address_vocabulary yet. Stage 1's listing tool uses a literal
 `WebPath`.
 
-The tool-call text format, `<tool_call>{"name", "input"}</tool_call>`
-(agent_loop branch `feat/tool-calls-as-text`), serves both stages. In stage 2
-a model-written definition arrives through a `define_tool` call.
+**How the model calls a tool: native tool use replaces the text format**
+(settled with effects-0f, https://github.com/intersyntactic/effects/issues/30,
+recorded on
+https://github.com/intersyntactic/agent_loop/pull/35#issuecomment-7121417836).
+agent_loop v0.6.0 has the model write
+`<tool_call>{"name", "input"}</tool_call>` in its reply text. That is only
+stage 1's bridge. Once is_model_vocabulary ships issue 30, the loop sends
+`{tools, turns}`, the model answers with tool calls, and the text format is
+dropped in that same release:
+- call `i` of turn `t` takes the places `[t, i, action]`;
+- the loop, not the driver, turns each action's outcome into the tool's
+  result, by action kind. A fetch that comes back 404 ran and failed, so
+  it's `ToolFailed`, not `ToolRan`;
+- `ToolRefused` comes only from an outcome where nothing ran.
+
+In stage 2 a model-written definition arrives through a `define_tool` call.
 
 ## First proof (stage 2's gate)
 
