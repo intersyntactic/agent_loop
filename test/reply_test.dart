@@ -30,6 +30,12 @@ import 'package:is_effects/is_effects.dart'
         encodeExecResult,
         encodeOutcome,
         encodeWebResponse;
+import 'package:is_docking_station_api/is_docking_station_api.dart'
+    show
+        RepliesInSlackConversation,
+        RepliesUnderWebAddress,
+        SlackChannelId,
+        SlackThreadTimestamp;
 import 'package:is_shapes/is_shapes.dart' show EntryId, TrajectoryId;
 import 'package:test/test.dart';
 
@@ -245,6 +251,21 @@ void main() {
         result,
         isA<Failed>().having((f) => f.why, 'why', contains('reply grant')),
       );
+    });
+  });
+
+  group('replyAddressFor', () {
+    test('a reply under a web address goes under its prefix', () {
+      expect(replyAddressFor(RepliesUnderWebAddress(_endpoint)), _endpoint);
+    });
+
+    test('a Slack conversation gets no address, so no reply is sent', () {
+      final slack = RepliesInSlackConversation(
+        origin: Origin.parse('https://slack.com')!,
+        channel: SlackChannelId.parse('C0123ABC')!,
+        thread: SlackThreadTimestamp.parse('1700000000.000100'),
+      );
+      expect(replyAddressFor(slack), isNull);
     });
   });
 }

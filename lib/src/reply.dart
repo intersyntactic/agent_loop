@@ -22,7 +22,17 @@ import 'package:is_effects/is_effects.dart'
         SignIn,
         decodeProposedRequest,
         encodeAddressPrefix;
+import 'package:is_docking_station_api/is_docking_station_api.dart'
+    show RepliesInSlackConversation, RepliesUnderWebAddress, ReplyEndpoint;
 import 'package:is_shapes/is_shapes.dart' show TrajectoryId;
+
+/// The web address a reply to [endpoint] is sent under, or null when the
+/// loop can't send to it: a Slack conversation is named in a reply's body,
+/// not its address, and no drawing writes one yet.
+AddressPrefix? replyAddressFor(ReplyEndpoint endpoint) => switch (endpoint) {
+  RepliesUnderWebAddress(:final prefix) => prefix,
+  RepliesInSlackConversation() => null,
+};
 
 /// The actions of a reply saying [text], such as the model's answer or why
 /// its call was refused, to [replyEndpoint] as [signIn]: [drawing] is

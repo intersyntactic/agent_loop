@@ -152,8 +152,16 @@ Future<Never> _run(_Options options) async {
       );
       return;
     }
+    final address = replyAddressFor(endpoint);
+    if (address == null) {
+      stderr.writeln(
+        'agent_loop: $what not sent: this trajectory replies in a Slack '
+        "conversation, which the loop can't send to yet",
+      );
+      return;
+    }
     final signIn = started.rules.whatMayLeaveThisMachine.signInForReply(
-      replyEndpoint: endpoint,
+      replyEndpoint: address,
       leasedNow: const {},
       pooled: const {},
     );
@@ -169,7 +177,7 @@ Future<Never> _run(_Options options) async {
         drawing: drawing,
         text: text,
         usage: usage,
-        replyEndpoint: endpoint,
+        replyEndpoint: address,
         signIn: signIn,
         trajectory: started.trajectory,
         turn: turn,

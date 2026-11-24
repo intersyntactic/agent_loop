@@ -34,6 +34,7 @@ import 'package:is_docking_station_api/is_docking_station_api.dart'
         DecisionEntryKind,
         EventAdmittedToMission,
         MessageSaid,
+        ReplyEndpoint,
         StartsTrajectory,
         decodeDecision;
 import 'package:checked_json/checked_json.dart' show JsonObject;
@@ -42,7 +43,6 @@ import 'package:is_logbook_client/is_logbook_client.dart'
     show CaughtUp, Entry, Kind, LogbookReader, ObjectId;
 import 'package:is_effects/is_effects.dart'
     show
-        AddressPrefix,
         CutOffReply,
         FinishedReply,
         ModelAndSignIn,
@@ -194,7 +194,7 @@ final class TrajectoryStarted extends TrajectoryEvent {
   /// admission recorded it beside [rules]: the one value the airlock's
   /// reply grants are decided against. Null when the module that
   /// translated the event can't name one, and the loop then sends no reply.
-  final AddressPrefix? replyEndpoint;
+  final ReplyEndpoint? replyEndpoint;
 }
 
 /// The admission that started this trajectory carried rules that do not
@@ -350,7 +350,7 @@ Stream<TrajectoryFeedItem> followTrajectoryHistory(
 TrajectoryEvent _startedUnder(
   ObjectId hash,
   JsonObject rules,
-  AddressPrefix? replyEndpoint,
+  ReplyEndpoint? replyEndpoint,
 ) {
   try {
     return TrajectoryStarted(

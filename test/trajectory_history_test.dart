@@ -199,9 +199,11 @@ void main() {
     );
 
     // Where every admitted message says replies go.
-    final endpoint = AddressPrefix.of(
-      Origin.parse('https://smba.trafficmanager.net')!,
-      PathPrefix.parse('/amer/v3/conversations/c1/')!,
+    final endpoint = RepliesUnderWebAddress(
+      AddressPrefix.of(
+        Origin.parse('https://smba.trafficmanager.net')!,
+        PathPrefix.parse('/amer/v3/conversations/c1/')!,
+      ),
     );
 
     // Writes an admission of [text], starting a new trajectory and mission
