@@ -419,9 +419,10 @@ read the clock, so it would undo every property above.)
 ## Stages
 
 1. **One action per tool.** Each tool's steps are a single `propose` of a
-   driver action that does its whole job: the docx driver's `readDocument`
-   fetches and reads in one action and returns a bounded passage;
-   teams_module's card build-and-send is one action. It's the same wire
+   driver action that does its whole job. (Its two examples, `readDocument`
+   fetching and reading in one action, and teams_module's card
+   build-and-send, no longer hold: see [Stage 1's actions](#stage-1s-actions)
+   below.) It's the same wire
    format as stage 2; the checker accepts only that one shape, and carrying
    it out is filling in the arguments and proposing. No reference ever
    reaches the model, so none can be forged or forwarded. This serves CAM
@@ -447,6 +448,57 @@ read the clock, so it would undo every property above.)
    outside case data and posts a card or document to Teams. Its exact steps
    are being gathered; the evaluator is built against them, not against
    made-up examples.
+
+### Stage 1's actions
+
+Agreed 24 Nov by airlock-api-b3, flight-rules-af and agent-loop-21.
+
+**A tool's action is its own closed type, `ToolAction`, in is_tools_api:**
+`read`, `read-bytes`, `fetch`, or `RunExecutable(ProgramName)`. It is not a
+free-text name, and it is not the airlock's `Program` set:
+
+- No model call: it would nest model calls, and let case text leave on a
+  tool's say-so.
+- No `make-web-requests`: posting changes the world. The Teams send is the
+  loop's reply step, not a tool.
+- No `write`: no tool needs it yet.
+
+agent_loop turns a `ToolAction` into the airlock's `Program` in one
+exhaustive switch, so a new case can't compile until it's mapped. Neither
+is_tools_api nor is_airlock_api depends on the other, so adding a program
+to the airlock gives tools nothing new: widening what tools can do is a
+decision of its own. `FlightRules` refuses rules where a given tool's
+`RunExecutable` names a program not in `programsItMayRun`, the same rule
+it already applies to `programsItNeeds`. A built-in isn't checked in the
+rules: each call is decided on its reach.
+
+**`readDocument` is a `fetch`** under documents_module's
+`FromPathsMatching` grant. It isn't a new built-in, which would put
+document knowledge into trusted driver code, and it isn't an Executable,
+because a process can't be held to a path pattern.
+
+Two things are open, and between them they decide what stage 1 can do:
+
+1. **How a fetch tool's arguments build its `WebFetch`.** The arguments
+   are positional slots (a bound value, an input field or a literal),
+   which fit an Executable's argv. A fetch's input is a typed object: an
+   origin, a sign-in and a path. The Graph path for a document is built
+   from a bound drive and the model's file name, and joining them is
+   `concat`, which is stage 2's term language. Options: a path template on
+   the fetch action whose holes are filled from slots (the shape
+   airlock-api-b3 named), or stage 1 fetches only whole-value paths.
+2. **How a document's bytes become text the model reads.** A fetch of a
+   `.docx` returns a zip, and the design already reads documents as
+   `fetch` then `docxToPassage` ([Documents stay in drivers](#documents-stay-in-drivers)),
+   which is two actions, so stage 2. Options: a rendering step inside the
+   trusted fetch driver, chosen by the response's type (a smaller form of
+   the same document-knowledge problem); or stage 1 serves only tools whose
+   one action's result is already text, such as listing a folder (Graph
+   returns JSON), and reading a document waits for stage 2.
+
+If neither is solved in stage 1, stage 1 can list a case folder but can't
+read a document in it. That's a smaller stage 1 than "this serves CAM
+now". Nick decides.
 
 The tool-call text format, `<tool_call>{"name", "input"}</tool_call>`
 (agent_loop branch `feat/tool-calls-as-text`), serves both stages. In stage 2
