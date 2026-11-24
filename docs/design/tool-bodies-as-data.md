@@ -462,6 +462,12 @@ shown to the model, called, proposed by the loop, decided by the airlock,
 and handed back framed. Every later stage adds to a route that already
 works.
 
+**It runs against an Enspyr test tenant and folder (Nick, 24 Nov
+13:23)**, not a client's data. CAM's rules grant no fetches, and Hart's
+tenant is paused. The trajectory's rules grant a Graph read of that one
+folder, under a sign-in that can make it. infra-dc sets up the tenant,
+the folder and the sign-in.
+
 **A tool's action is its own closed type, `ToolAction`, in is_tools_api.**
 It is not a free-text name, and it is not the airlock's `Program` set.
 **In stage 1 it has one case, `fetch`** (origin, path and sign-in), since
@@ -636,7 +642,7 @@ So a stage-1 listing returns Graph's first page only. That's enough when
 a case folder is smaller than a page. It isn't when one is larger, and
 the model would see a listing cut short with nothing to say so. A
 listing that silently drops items is worse than a refusal. The steps, in
-order (airlock-api-b3):
+order (airlock-api-b3; the order decided by Nick, 24 Nov 13:23):
 
 1. **Always, and ships with stage 1: a "first page only" notice.** It
    costs nothing in the rules. The module's tool description states it
