@@ -199,9 +199,16 @@ Future<void> main(List<String> args) async {
     }
   }
 
+  // The message owed an answer now, if any: none while a model call this
+  // loop made has not yet ended in its history, so that call's reply is in
+  // the next request rather than after it.
+  SaidByUser? owedNow() => modelCallsSettled(history, turnsUsed: nextTurn)
+      ? unansweredTurn(history)
+      : null;
+
   // The backlog is only read, never answered as it arrives: a message in it
   // may already have its answer further on. Once caught up, the loop
-  // answers the one message still owed, if any, then every new one live.
+  // answers whatever is owed after each event.
   var caughtUp = false;
   await for (final item in followTrajectoryHistory(
     reader,
@@ -217,16 +224,16 @@ Future<void> main(List<String> args) async {
         }
         final last = lastPlace(history);
         nextTurn = (last?.turn ?? -1) + 1;
-        final owed = unansweredTurn(history);
+        final owed = owedNow();
         stdout.writeln(
           'agent_loop: caught up at place ${last ?? 'none'}, '
-          '${owed == null ? 'nothing owed' : 'answering ${owed.hash.hex}'}',
+          '${owed == null ? 'nothing owed now' : 'answering ${owed.hash.hex}'}',
         );
         if (owed != null) await answer(owed);
       case TrajectoryEvent event:
         history.add(event);
         if (!caughtUp) continue;
-        if (event is SaidByUser && event.startsTurn) await answer(event);
+        if (owedNow() case final owed?) await answer(owed);
     }
   }
 }

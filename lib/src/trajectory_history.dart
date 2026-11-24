@@ -97,15 +97,28 @@ final class SaidByUser extends TrajectoryEvent {
 
 /// The model's reply to a call this loop proposed, read from the airlock's
 /// outcome entry for it: [hash] is that outcome entry, which is what the
-/// model's later requests were built from. [reply] says whether the model
-/// finished or was cut off, and what the call used when the driver could
-/// tell.
+/// model's later requests were built from, and [proposed] the call it
+/// answers. [reply] says whether the model finished or was cut off, and
+/// what the call used when the driver could tell.
 final class SaidByAgent extends TrajectoryEvent {
-  const SaidByAgent({required super.hash, required this.reply});
+  const SaidByAgent({
+    required super.hash,
+    required this.proposed,
+    required this.reply,
+  });
 
+  final ObjectId proposed;
   final ModelReply reply;
 
   String get text => reply.text;
+}
+
+/// The airlock's outcome for a model call this loop proposed, [proposed],
+/// when the model did not run: the call has ended, with nothing said.
+final class ModelCallRefused extends TrajectoryEvent {
+  const ModelCallRefused({required super.hash, required this.proposed});
+
+  final ObjectId proposed;
 }
 
 /// An action this loop proposed: [place] is the place it named;
@@ -221,10 +234,15 @@ Stream<TrajectoryFeedItem> followTrajectoryHistory(
       return const [];
     }
     if (entry.kind == _outcomeKind) {
-      final reply = _modelReplyIn(entry.body, modelCalls);
-      return reply == null
-          ? const []
-          : [SaidByAgent(hash: entry.id, reply: reply)];
+      return switch (_modelCallEndIn(entry.body, modelCalls)) {
+        null => const [],
+        (:final proposed, reply: final reply?) => [
+          SaidByAgent(hash: entry.id, proposed: proposed, reply: reply),
+        ],
+        (:final proposed, reply: null) => [
+          ModelCallRefused(hash: entry.id, proposed: proposed),
+        ],
+      };
     }
     if (entry.kind == turnKind) {
       final belongs =
@@ -281,18 +299,27 @@ TrajectoryEvent _startedUnder(
   }
 }
 
-/// The model's reply in [body], an outcome entry's, when it answers one of
-/// [modelCalls] and the model ran; null otherwise.
-ModelReply? _modelReplyIn(List<int> body, Set<EntryId> modelCalls) {
+/// The end of one of [modelCalls] in [body], an outcome entry's: the call
+/// it answers, and the model's reply, or null when the model did not run.
+/// Null for an outcome of anything else. An outcome whose result does not
+/// decode ends its call too, with no reply.
+({ObjectId proposed, ModelReply? reply})? _modelCallEndIn(
+  List<int> body,
+  Set<EntryId> modelCalls,
+) {
   final outcome = readOutcomeOfProposedAction(_text(body));
   if (outcome == null || !modelCalls.contains(outcome.proposed)) return null;
+  final proposed = ObjectId.parse(outcome.proposed.hex)!;
   try {
-    return switch (decodeOutcome(outcome.result, decodeModelReply)) {
-      Ran(:final output) => output,
-      Refused() => null,
-    };
+    return (
+      proposed: proposed,
+      reply: switch (decodeOutcome(outcome.result, decodeModelReply)) {
+        Ran(:final output) => output,
+        Refused() => null,
+      },
+    );
   } on FormatException {
-    return null;
+    return (proposed: proposed, reply: null);
   }
 }
 
@@ -300,30 +327,45 @@ ModelReply? _modelReplyIn(List<int> body, Set<EntryId> modelCalls) {
 /// not UTF-8 reads as text they then refuse, rather than throwing here.
 String _text(List<int> body) => utf8.decode(body, allowMalformed: true);
 
-/// [history], oldest first, as a model request's turns: one per event.
+/// [history], oldest first, as a model request's turns: one per message
+/// and reply. A reply goes where the call it answers was proposed, not
+/// where its outcome arrived, so a message admitted while the model was
+/// answering comes after that answer, as the model saw it.
 /// [TurnOnChain] goes through [inputTurnOf]'s own node-shape cases; since
 /// ReplyText turns are dead and no `UserSaid` ever arrives this way any
 /// more (it arrives as [SaidByUser] instead), nothing currently reaches
 /// this case — kept for whatever the loop's own chain ends up carrying.
 /// Throws [FormatException] for a [TurnOnChain] whose node shape it doesn't
 /// know.
-List<ModelInputTurn> trajectoryInput(List<TrajectoryEvent> history) => [
-  for (final event in history)
-    ?switch (event) {
-      SaidByUser(:final text) => ModelInputTurn(ModelInputRole.user, text),
-      SaidByAgent(:final reply) => ModelInputTurn(
-        ModelInputRole.assistant,
-        switch (reply) {
-          FinishedReply(:final text) => text,
-          CutOffReply(:final text) => '$text\n\n$_cutOffNote',
+List<ModelInputTurn> trajectoryInput(List<TrajectoryEvent> history) {
+  final replies = {
+    for (final event in history)
+      if (event case SaidByAgent(:final proposed, :final reply))
+        proposed: reply,
+  };
+  return [
+    for (final event in history)
+      ?switch (event) {
+        SaidByUser(:final text) => ModelInputTurn(ModelInputRole.user, text),
+        ActionProposed(:final hash) => switch (replies[hash]) {
+          FinishedReply(:final text) => ModelInputTurn(
+            ModelInputRole.assistant,
+            text,
+          ),
+          CutOffReply(:final text) => ModelInputTurn(
+            ModelInputRole.assistant,
+            '$text\n\n$_cutOffNote',
+          ),
+          null => null,
         },
-      ),
-      TurnOnChain(:final turn) => inputTurnOf(turn),
-      ActionProposed() ||
-      TrajectoryStarted() ||
-      TrajectoryRulesUnreadable() => null,
-    },
-];
+        TurnOnChain(:final turn) => inputTurnOf(turn),
+        SaidByAgent() ||
+        ModelCallRefused() ||
+        TrajectoryStarted() ||
+        TrajectoryRulesUnreadable() => null,
+      },
+  ];
+}
 
 /// Follows a cut-off reply's text in the model's own history, so it knows
 /// that reply stopped short rather than reading it as finished.
@@ -341,7 +383,11 @@ const _cutOffNote = '(This reply was cut off before it finished.)';
         return (model: rules.startingModel, why: null);
       case TrajectoryRulesUnreadable(:final why):
         return (model: null, why: 'its rules do not read: $why');
-      case SaidByUser() || SaidByAgent() || ActionProposed() || TurnOnChain():
+      case SaidByUser() ||
+          SaidByAgent() ||
+          ModelCallRefused() ||
+          ActionProposed() ||
+          TurnOnChain():
         continue;
     }
   }
@@ -362,6 +408,7 @@ SaidByUser? unansweredTurn(List<TrajectoryEvent> history) {
         return event;
       case SaidByUser() ||
           SaidByAgent() ||
+          ModelCallRefused() ||
           ActionProposed() ||
           TurnOnChain() ||
           TrajectoryStarted() ||
@@ -378,6 +425,31 @@ ObjectId? lastOwnEntry(List<TrajectoryEvent> history) => [
   for (final event in history)
     if (event is ActionProposed || event is TurnOnChain) event.hash,
 ].lastOrNull;
+
+/// Whether every model call this loop has made has ended in [history], its
+/// proposal and its outcome both read: [turnsUsed] is how many turns the
+/// loop has started, so its latest call counts even before its proposal
+/// arrives. Until then the loop answers nothing, since a reply still on
+/// its way belongs in the next request.
+bool modelCallsSettled(
+  List<TrajectoryEvent> history, {
+  required int turnsUsed,
+}) {
+  final calls = [
+    for (final event in history)
+      if (event case ActionProposed(asksTheModel: true)) event,
+  ];
+  final ended = {
+    for (final event in history)
+      if (event
+          case SaidByAgent(:final proposed) ||
+              ModelCallRefused(:final proposed))
+        proposed,
+  };
+  return (turnsUsed == 0 ||
+          calls.any((call) => call.place.turn >= turnsUsed - 1)) &&
+      calls.every((call) => ended.contains(call.hash));
+}
 
 /// The latest place this loop has proposed at in [history], or null for
 /// none: a restarted loop's next turn goes after it, never reusing a place.

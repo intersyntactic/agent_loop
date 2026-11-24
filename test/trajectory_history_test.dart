@@ -309,7 +309,7 @@ void main() {
   });
 
   test('a model call the airlock ran comes back as the agent\'s reply; a '
-      'refused one is skipped', () async {
+      'refused one ends its call with nothing said; each names its call', () async {
     final rootResult = await rawWriter.write(
       Kind.usersAssignedToTrajectory,
       Uint8List.fromList(
@@ -387,8 +387,8 @@ void main() {
     await returned.close();
     final found = items.whereType<TrajectoryEvent>().toList();
 
-    // Both proposals come back, each with its place; only the call that ran
-    // comes back as a reply.
+    // Every proposal comes back with its place, then its call's end: a reply
+    // for a call that ran, a refusal for one that didn't.
     expect(
       [
         for (final e in found)
@@ -401,6 +401,7 @@ void main() {
                   : hash == cutHash
                   ? 'cut'
                   : '?'}',
+            ModelCallRefused() => 'refused',
             SaidByUser() ||
             TurnOnChain() ||
             TrajectoryStarted() ||
@@ -411,10 +412,20 @@ void main() {
         'proposed 1.model-call model=true',
         'reply ran',
         'proposed 2.model-call model=true',
+        'refused',
         'proposed 3.model-call model=true',
         'reply cut',
       ],
     );
+    // Each end names the proposal just before it, so every call has ended.
+    for (final (i, e) in found.indexed) {
+      if (e
+          case SaidByAgent(:final proposed) ||
+              ModelCallRefused(:final proposed)) {
+        expect(proposed, found[i - 1].hash);
+      }
+    }
+    expect(modelCallsSettled(found, turnsUsed: 4), isTrue);
     expect(lastPlace(found), ProposedForTheModelCall.at(3));
     // A cut-off reply reaches the model marked as cut off, never as finished.
     expect(jsonDecode(encodeModelInput(trajectoryInput(found))), [
