@@ -590,7 +590,8 @@ Graph's own response and the path stays fixed, so a forged token could
 only reach the same listing. Graph's real page size for a folder's
 children, and CAM's real folder sizes, haven't been checked.
 
-Question 1, (d), is agreed in principle and not built.
+Question 1, (d): Nick hasn't decided. Stage 1 doesn't need it, either
+way.
 
 The tool-call text format, `<tool_call>{"name", "input"}</tool_call>`
 (agent_loop branch `feat/tool-calls-as-text`), serves both stages. In stage 2
