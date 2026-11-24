@@ -468,6 +468,13 @@ read the clock, so it would undo every property above.)
    outside case data and posts a card or document to Teams. Its exact steps
    are being gathered; the evaluator is built against them, not against
    made-up examples.
+   **Frozen (Nick, 24 Nov).** The case review report is paused with the
+   Hart work (https://github.com/intersyntactic/agent_loop/issues/41), so
+   stage 2 has no workflow to build against, and TEMPER left it
+   uncertified after round 4. Nothing in stage 2 is built or tempered
+   further until a workflow is shown to need a judgement-free chain of
+   two or more effects. Then TEMPER round 4's 15 flaws are folded in and
+   round 5 is struck. Stage 1 goes ahead without it.
 
 ### Stage 1's actions
 
