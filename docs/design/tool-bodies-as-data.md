@@ -555,9 +555,15 @@ Two things are open, and between them they decide what stage 1 can do:
      stage 2, not a way around it, and the parser is docx-driver-ce's
      tested code.
 
-With (d) and no transform, stage 1 can list a case folder but can't read
-a document in it. With (d) and the fixed two-step pipeline, it serves
-CAM's reads. Nick decides.
+**Decided (Nick, 24 Nov 13:11, relayed by airlock-api-b3): reading a
+document can wait.** Stage 1 serves only tools whose result is already
+text, such as listing a folder, with no transform and no pipeline. The
+fixed fetch then `docx-to-passage` pipeline, and the content-addressed
+store it needs to keep a document's bytes out of the loop and the
+logbook, are stage 2's first piece, built against CAM's case review
+report.
+
+Question 1, (d), is still open.
 
 The tool-call text format, `<tool_call>{"name", "input"}</tool_call>`
 (agent_loop branch `feat/tool-calls-as-text`), serves both stages. In stage 2
