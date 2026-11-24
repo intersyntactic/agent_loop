@@ -1,13 +1,13 @@
 /// Records what a model call sends, before it is sent, on a
 /// [TrajectoryChain] (the live logbook): one [ModelRequestPiece]
-/// entry per text, then a [ModelRequest] entry naming each as a
+/// entry per text, then a [ModelRequestFromPieces] entry naming each as a
 /// [TextFromPieces] and the turns it was built from.
 library;
 
 import 'dart:convert' show jsonEncode, utf8;
 
 import 'package:is_airlock_api/is_airlock_api.dart'
-    show ModelRequest, ModelRequestPiece, TextFromPieces;
+    show ModelRequestFromPieces, ModelRequestPiece, TextFromPieces;
 import 'package:is_content_id/is_content_id.dart' show ObjectId;
 import 'package:is_logbook_client/is_logbook_client.dart' show Kind;
 import 'package:is_logbook_client/is_logbook_client.dart'
@@ -18,10 +18,10 @@ import 'package:is_shapes/is_shapes.dart' show EntryId;
 import 'trajectory_chain.dart';
 
 final _pieceKind = Kind.parse(ModelRequestPiece.kind)!;
-final _requestKind = Kind.parse(ModelRequest.kind)!;
+final _requestKind = Kind.parse(ModelRequestFromPieces.kind)!;
 
 /// Records [systemPrompt] and [request] on [chain] as a model request: one
-/// [ModelRequestPiece] entry per text, then a [ModelRequest] entry naming
+/// [ModelRequestPiece] entry per text, then a [ModelRequestFromPieces] entry naming
 /// each as a [TextFromPieces] and [builtFrom], the turns they were rendered
 /// from. All land on [chain]'s own tip, in order. Returns the request
 /// entry's id.
@@ -33,7 +33,7 @@ Future<logbook_client.ObjectId> recordModelRequestOnTrajectory(
 }) async {
   final recordedSystemPrompt = await _recordText(chain, systemPrompt);
   final recordedRequest = await _recordText(chain, request);
-  final modelRequest = ModelRequest(
+  final modelRequest = ModelRequestFromPieces(
     systemPrompt: recordedSystemPrompt,
     request: recordedRequest,
     builtFrom: [for (final turn in builtFrom) EntryId.parse(turn.hex)!],

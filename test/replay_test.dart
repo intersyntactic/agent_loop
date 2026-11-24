@@ -9,12 +9,46 @@ import 'package:is_airlock_api/is_airlock_api.dart'
 import 'package:is_docking_station_api/is_docking_station_api.dart'
     show AddressInExternalSystem;
 import 'package:is_effects/is_effects.dart'
-    show FinishedReply, Origin, SignIn, WebPath;
+    show
+        CalledToolName,
+        FinishedReply,
+        Origin,
+        ProposedToolCalls,
+        SignIn,
+        ToolCall,
+        ToolCallId,
+        ToolInput,
+        WebPath;
 import 'package:is_logbook_client/is_logbook_client.dart' show ObjectId;
+import 'package:is_model_vocabulary/is_model_vocabulary.dart'
+    show
+        AgentCalledTools,
+        AgentSaid,
+        ModelTurn,
+        ToolAnswered,
+        ToolFailed,
+        ToolRan,
+        ToolRefused,
+        ToolResult,
+        UserSaid;
 import 'package:is_shapes/is_shapes.dart' show ActorId;
 import 'package:is_tools_api/is_tools_api.dart'
     show Fetch, Input, OneActionTool;
 import 'package:test/test.dart';
+
+/// [turn] as one line, so a request's turns read as a list.
+String _show(ModelTurn turn) => switch (turn) {
+  UserSaid(:final text) => 'user:$text',
+  AgentSaid(:final text) => 'agent:$text',
+  AgentCalledTools(:final calls) =>
+    'calls:${[for (final c in calls) '${c.id} ${c.name.asSent}'].join(',')}',
+  ToolAnswered(:final callId, result: ToolRan(:final text)) =>
+    'answer:$callId ran $text',
+  ToolAnswered(:final callId, result: ToolFailed(:final text)) =>
+    'answer:$callId failed $text',
+  ToolAnswered(:final callId, result: ToolRefused(:final why)) =>
+    'answer:$callId refused $why',
+};
 
 ObjectId _id(String seed) => ObjectId.of(Uint8List.fromList(seed.codeUnits));
 
@@ -40,28 +74,36 @@ ActionProposed _proposed(
   program: model ? ProposedProgram.askTheModel : ProposedProgram.other,
 );
 
-/// A tool's fetch at [turn]'s one intent.
-ActionProposed _fetch(String seed, int turn) => ActionProposed(
+/// A tool's fetch for the [call]th call of [turn]'s reply.
+ActionProposed _fetch(String seed, int turn, {int call = 0}) => ActionProposed(
   hash: _id(seed),
-  place: ProposedForAnIntent.at(turn, 0, 0),
+  place: ProposedForAnIntent.at(turn, call, 0),
   program: ProposedProgram.fetchFromWeb,
 );
 
-/// The fetch proposed as [fetch] ended, giving [text].
-FetchEnded _fetched(String text, String fetch, {bool isError = false}) =>
-    FetchEnded(
-      hash: _id('end of $fetch'),
-      proposed: _id(fetch),
-      text: text,
-      isError: isError,
+/// The fetch proposed as [fetch] ended, and the model hears [result].
+FetchEnded _fetched(ToolResult result, String fetch) => FetchEnded(
+  hash: _id('end of $fetch'),
+  proposed: _id(fetch),
+  result: result,
+);
+
+/// The model's reply [seed] to the call proposed as [call]: a finished
+/// reply, or with [calls], a proposal of them.
+SaidByAgent _agent(String seed, String call, {List<ToolCall>? calls}) =>
+    SaidByAgent(
+      hash: _id(seed),
+      proposed: _id(call),
+      reply: calls == null
+          ? FinishedReply(text: seed)
+          : ProposedToolCalls(text: 'Let me look.', calls: calls),
     );
 
-/// The model's reply [seed] to the call proposed as [call], or [text] when
-/// given.
-SaidByAgent _agent(String seed, String call, {String? text}) => SaidByAgent(
-  hash: _id(seed),
-  proposed: _id(call),
-  reply: FinishedReply(text: text ?? seed),
+/// A call the model made, as [id], to the tool it named [name].
+ToolCall _call(String id, String name) => ToolCall(
+  id: ToolCallId.parse(id)!,
+  name: CalledToolName.fromSent(name),
+  input: ToolInput.parse('{}')!,
 );
 
 final _graph = Origin.parse('https://graph.microsoft.com')!;
@@ -79,8 +121,9 @@ final _listDocuments = OneActionTool.of(
 
 final _tools = {_listDocuments.name: _listDocuments};
 
-const _callsListDocuments =
-    'Let me look.\n<tool_call>{"name": "list_documents"}</tool_call>';
+final _callsListDocuments = [_call('toolu_1', 'list_documents')];
+
+const _threeFiles = ToolRan('3 files');
 
 ModelCallRefused _refused(String seed, String call) =>
     ModelCallRefused(hash: _id(seed), proposed: _id(call));
@@ -89,9 +132,9 @@ ModelCallRefused _refused(String seed, String call) =>
 /// that ran for it.
 List<TrajectoryEvent> _fetchedOnce(int turn) => [
   _proposed('p$turn', turn),
-  _agent('a$turn', 'p$turn', text: _callsListDocuments),
+  _agent('a$turn', 'p$turn', calls: _callsListDocuments),
   _fetch('f$turn', turn),
-  _fetched('3 files', 'f$turn'),
+  _fetched(_threeFiles, 'f$turn'),
 ];
 
 void main() {
@@ -154,8 +197,8 @@ void main() {
     ], tools: const {});
 
     expect(
-      [for (final t in input) '${t.role.name}:${t.text}'],
-      ['user:u1', 'assistant:a1', 'user:u2'],
+      [for (final t in input) _show(t)],
+      ['user:u1', 'agent:a1', 'user:u2'],
     );
   });
 
@@ -206,7 +249,7 @@ void main() {
       final history = [
         _user('u1'),
         _proposed('p1', 0),
-        _agent('a1', 'p1', text: _callsListDocuments),
+        _agent('a1', 'p1', calls: _callsListDocuments),
         _fetch('f1', 0),
       ];
       final latest = ProposedForAnIntent.at(0, 0, 0);
@@ -215,7 +258,7 @@ void main() {
       expect(
         actionsSettled([
           ...history,
-          _fetched('3 files', 'f1'),
+          _fetched(_threeFiles, 'f1'),
         ], latestOwn: latest),
         isTrue,
       );
@@ -230,11 +273,11 @@ void main() {
     final asked = [
       _user('u1'),
       _proposed('p1', 0),
-      _agent('a1', 'p1', text: _callsListDocuments),
+      _agent('a1', 'p1', calls: _callsListDocuments),
     ];
 
-    test('a reply that calls a given tool owes its action at the turn\'s '
-        'one intent', () {
+    test('a reply that calls a given tool owes its action at the call\'s '
+        'own intent', () {
       final step = stepOwed(
         asked,
         tools: _tools,
@@ -269,7 +312,7 @@ void main() {
       expect(stepOwed(fetching, tools: _tools, latestOwn: latest), isNull);
       expect(
         stepOwed(
-          [...fetching, _fetched('3 files', 'f1')],
+          [...fetching, _fetched(_threeFiles, 'f1')],
           tools: _tools,
           latestOwn: latest,
         ),
@@ -345,55 +388,133 @@ void main() {
   });
 
   group('trajectoryInput with tools', () {
-    test('a tool call\'s result follows the call, even when a message '
+    test('a tool call\'s answer follows the call, even when a message '
         'arrived before it ended', () {
       final input = trajectoryInput([
         _user('u1'),
         _proposed('p1', 0),
-        _agent('a1', 'p1', text: _callsListDocuments),
+        _agent('a1', 'p1', calls: _callsListDocuments),
         _fetch('f1', 0),
         _user('u2'),
-        _fetched('3 files', 'f1'),
+        _fetched(_threeFiles, 'f1'),
       ], tools: _tools);
 
       expect(
-        [for (final t in input) '${t.role.name}:${t.text}'],
+        [for (final t in input) _show(t)],
         [
           'user:u1',
-          'assistant:$_callsListDocuments',
-          'user:${toolResultText('3 files', name: 'list_documents', isError: false)}',
+          'calls:toolu_1 list_documents',
+          'answer:toolu_1 ran 3 files',
           'user:u2',
         ],
       );
     });
 
-    test('a call that cannot run is answered with why, as an error, with '
-        'no fetch', () {
+    test('a call to a tool never offered is answered that it failed, with '
+        'no fetch, never that it was refused', () {
       final input = trajectoryInput([
         _user('u1'),
         _proposed('p1', 0),
-        _agent('a1', 'p1', text: _callsListDocuments),
+        _agent('a1', 'p1', calls: _callsListDocuments),
       ], tools: const {});
 
       expect(
-        input.last.text,
-        toolResultText(
-          'there is no tool named "list_documents"',
-          name: 'list_documents',
-          isError: true,
-        ),
+        _show(input.last),
+        'answer:toolu_1 failed no tool named "list_documents"',
       );
     });
 
-    test('a call whose fetch has not ended has no result yet', () {
+    test('a call whose fetch has not ended is still answered, so no call '
+        'is ever left without one', () {
       final input = trajectoryInput([
         _user('u1'),
         _proposed('p1', 0),
-        _agent('a1', 'p1', text: _callsListDocuments),
+        _agent('a1', 'p1', calls: _callsListDocuments),
         _fetch('f1', 0),
       ], tools: _tools);
 
-      expect(input.last.text, _callsListDocuments);
+      expect(_show(input.last), 'answer:toolu_1 failed ${notRun.text}');
+    });
+
+    test('several calls in one reply are answered in the order made, each '
+        'under its own id', () {
+      final input = trajectoryInput([
+        _user('u1'),
+        _proposed('p1', 0),
+        _agent(
+          'a1',
+          'p1',
+          calls: [
+            _call('toolu_1', 'list_documents'),
+            _call('toolu_2', 'web.fetch'),
+            _call('toolu_3', 'list_documents'),
+          ],
+        ),
+        _fetch('f1', 0),
+        _fetched(_threeFiles, 'f1'),
+        _fetch('f3', 0, call: 2),
+        _fetched(const ToolRefused('the airlock denied it'), 'f3'),
+      ], tools: _tools);
+
+      expect(
+        [for (final t in input.skip(1)) _show(t)],
+        [
+          'calls:toolu_1 list_documents,toolu_2 web.fetch,toolu_3 list_documents',
+          'answer:toolu_1 ran 3 files',
+          'answer:toolu_2 failed no tool named "web.fetch"',
+          'answer:toolu_3 refused the airlock denied it',
+        ],
+      );
+    });
+  });
+
+  group('stepOwed with several calls', () {
+    final asked = [
+      _user('u1'),
+      _proposed('p1', 0),
+      _agent(
+        'a1',
+        'p1',
+        calls: [
+          _call('toolu_1', 'list_documents'),
+          _call('toolu_2', 'web.fetch'),
+          _call('toolu_3', 'list_documents'),
+        ],
+      ),
+    ];
+
+    test('runs the calls one at a time, each at its own intent, skipping '
+        "one that can't run, then asks the model", () {
+      expect(
+        stepOwed(
+          asked,
+          tools: _tools,
+          latestOwn: ProposedForTheModelCall.at(0),
+        ),
+        isA<ToolActionOwed>().having(
+          (s) => s.place,
+          'place',
+          ProposedForAnIntent.at(0, 0, 0),
+        ),
+      );
+      final first = [...asked, _fetch('f1', 0), _fetched(_threeFiles, 'f1')];
+      expect(
+        stepOwed(first, tools: _tools, latestOwn: lastPlace(first)),
+        isA<ToolActionOwed>().having(
+          (s) => s.place,
+          'place',
+          ProposedForAnIntent.at(0, 2, 0),
+        ),
+      );
+      final both = [
+        ...first,
+        _fetch('f3', 0, call: 2),
+        _fetched(_threeFiles, 'f3'),
+      ];
+      expect(
+        stepOwed(both, tools: _tools, latestOwn: lastPlace(both)),
+        isA<ModelCallOwed>().having((s) => s.after, 'after', _id('a1')),
+      );
     });
   });
 

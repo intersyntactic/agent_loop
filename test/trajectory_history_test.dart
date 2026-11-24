@@ -31,9 +31,10 @@ import 'package:is_effects/is_effects.dart'
         Origin,
         Outcome,
         PathPrefix,
+        NothingRan,
         Ran,
-        Refused,
         SignIn,
+        StoppedPartway,
         TextBody,
         WebPath,
         WebResponse,
@@ -42,6 +43,8 @@ import 'package:is_effects/is_effects.dart'
         encodeWebResponse;
 import 'package:is_conversation_shapes/is_conversation_shapes.dart'
     show SourceMessageId, UserSaid;
+import 'package:is_model_vocabulary/is_model_vocabulary.dart'
+    show ToolFailed, ToolRan, ToolRefused;
 import 'package:checked_json/checked_json.dart' show JsonObject;
 import 'package:is_docking_station_api/is_docking_station_api.dart';
 import 'package:is_flight_rules/is_flight_rules.dart'
@@ -177,13 +180,10 @@ void main() {
     expect(found[1], isA<TurnOnChain>());
     expect((found[1] as TurnOnChain).hash, turnHash);
 
-    expect(
-      jsonDecode(encodeModelInput(trajectoryInput(found, tools: const {}))),
-      [
-        {'role': 'user', 'content': 'hey are you there'},
-        {'role': 'user', 'content': 'a loop-written turn'},
-      ],
-    );
+    expect(_turnsOf(found), [
+      {'kind': 'user', 'text': 'hey are you there'},
+      {'kind': 'user', 'text': 'a loop-written turn'},
+    ]);
   });
 
   group('the model a trajectory started under', () {
@@ -286,13 +286,10 @@ void main() {
       expect(started.replyEndpoint, endpoint);
       expect(started.trajectory.hex, started.hash.hex);
       // The rules are not part of the conversation.
-      expect(
-        jsonDecode(encodeModelInput(trajectoryInput(found, tools: const {}))),
-        [
-          {'role': 'user', 'content': 'first'},
-          {'role': 'user', 'content': 'follow-up'},
-        ],
-      );
+      expect(_turnsOf(found), [
+        {'kind': 'user', 'text': 'first'},
+        {'kind': 'user', 'text': 'follow-up'},
+      ]);
     });
 
     test('rules whose starting sign-in they do not allow give no model, '
@@ -352,7 +349,7 @@ void main() {
       int turn,
       Outcome<ModelReply> outcome,
     ) async {
-      final asked = Program.askTheModel.runOrRefusal<ModelReply>(
+      final asked = Program.askTheModel.runOrFail<ModelReply>(
         ModelCall(
           signIn: ModelSignInName.parse('anthropic-api')!,
           model: ModelName.parse('claude-opus-5-5')!,
@@ -390,7 +387,7 @@ void main() {
       1,
       const Ran(FinishedReply(text: 'yes, here')),
     );
-    await answer(2, const Refused('no sign-in'));
+    await answer(2, const NothingRan('no sign-in'));
     final cutHash = await answer(3, const Ran(CutOffReply(text: 'half an')));
 
     final items = <TrajectoryFeedItem>[];
@@ -449,16 +446,13 @@ void main() {
     );
     expect(lastPlace(found), ProposedForTheModelCall.at(3));
     // A cut-off reply reaches the model marked as cut off, never as finished.
-    expect(
-      jsonDecode(encodeModelInput(trajectoryInput(found, tools: const {}))),
-      [
-        {'role': 'assistant', 'content': 'yes, here'},
-        {
-          'role': 'assistant',
-          'content': 'half an\n\n(This reply was cut off before it finished.)',
-        },
-      ],
-    );
+    expect(_turnsOf(found), [
+      {'kind': 'agent', 'text': 'yes, here'},
+      {
+        'kind': 'agent',
+        'text': 'half an\n\n(This reply was cut off before it finished.)',
+      },
+    ]);
   });
 
   test('a tool\'s fetch is proposed as the tool says, at the turn\'s one '
@@ -529,7 +523,11 @@ void main() {
       1,
       const Ran(WebResponse(status: 403, refusedBecause: 'accessDenied')),
     );
-    await run(2, const Refused('no grant lets it out'));
+    await run(2, const NothingRan('no grant lets it out'));
+    await run(
+      3,
+      const StoppedPartway<WebResponse>(why: 'the socket closed', done: null),
+    );
 
     final items = <TrajectoryFeedItem>[];
     final sub = followTrajectoryHistory(
@@ -548,8 +546,9 @@ void main() {
           switch (e) {
             ActionProposed(:final place, :final program) =>
               'proposed $place ${program.name}',
-            FetchEnded(:final text, :final isError) =>
-              'ended${isError ? ' error' : ''}: $text',
+            FetchEnded(result: ToolRan(:final text)) => 'ran: $text',
+            FetchEnded(result: ToolFailed(:final text)) => 'failed: $text',
+            FetchEnded(result: ToolRefused(:final why)) => 'refused: $why',
             SaidByAgent() ||
             ModelCallRefused() ||
             SaidByUser() ||
@@ -560,11 +559,14 @@ void main() {
       ],
       [
         'proposed 0.0.0 fetchFromWeb',
-        'ended: 3 files',
+        'ran: 3 files',
         'proposed 1.0.0 fetchFromWeb',
-        'ended error: the site answered 403: accessDenied',
+        'failed: the site answered 403: accessDenied',
         'proposed 2.0.0 fetchFromWeb',
-        'ended error: the fetch was refused: no grant lets it out',
+        'refused: no grant lets it out',
+        'proposed 3.0.0 fetchFromWeb',
+        "failed: it stopped partway, so it may have partly happened; don't "
+            'retry it: the socket closed',
       ],
     );
     // The proposal carries the tool's own address and sign-in, and keeps
@@ -583,6 +585,12 @@ void main() {
     });
   });
 }
+
+/// The turns a model request built from [found] carries, as their JSON.
+List<Map<String, Object?>> _turnsOf(List<TrajectoryEvent> found) => [
+  for (final turn in trajectoryInput(found, tools: const {}))
+    turn.toJson().asUncheckedMap(),
+];
 
 /// The body of [id]'s entry, read from [reader]'s backlog.
 Future<String> _entryBody(LogbookReader reader, client.ObjectId id) async {

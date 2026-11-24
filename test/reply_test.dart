@@ -24,7 +24,7 @@ import 'package:is_effects/is_effects.dart'
         PathPrefix,
         ProgramName,
         Ran,
-        Refused,
+        NothingRan,
         SignIn,
         WebResponse,
         encodeExecResult,
@@ -229,7 +229,7 @@ void main() {
       final link = _FakeLink([
         (_) => _drawn(Exited(0, stdout: jsonEncode([_request]), stderr: '')),
         (_) => encodeOutcome<Object?>(
-          const Refused('not under a reply grant'),
+          const NothingRan('not under a reply grant'),
           (_) => null,
         ),
       ]);
