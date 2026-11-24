@@ -23,7 +23,7 @@ import 'package:is_effects/is_effects.dart'
         WebPath,
         WebResponse;
 import 'package:is_model_vocabulary/is_model_vocabulary.dart'
-    show ToolFailed, ToolRan, ToolRefused, ToolResult;
+    show ToolFailed, ToolName, ToolRan, ToolRefused, ToolResult;
 import 'package:is_tools_api/is_tools_api.dart'
     show Fetch, Input, OneActionTool;
 import 'package:test/test.dart';
@@ -34,8 +34,10 @@ final _fetch = Fetch(
   SignIn.parse('enspyr-test')!,
 );
 
+final _listDocuments = ToolName.of('list_documents');
+
 OneActionTool _tool(String name, {Input<Object?>? input}) => OneActionTool.of(
-  name: name,
+  name: ToolName.of(name),
   description: 'Lists the channel folder.',
   input: input ?? Input.none,
   action: _fetch,
@@ -59,14 +61,10 @@ void main() {
         Input.none.schema.asUncheckedMap(),
       );
     });
-
-    test('leaves out a tool whose name the model could not call', () {
-      expect(offeredTools([_tool('list.documents')]), isEmpty);
-    });
   });
 
   group('toolCalled', () {
-    final tools = {'list_documents': _tool('list_documents')};
+    final tools = {_listDocuments: _tool('list_documents')};
 
     test('a call naming a given tool runs it', () {
       expect(
@@ -91,7 +89,7 @@ void main() {
 
     test("input the tool can't read fails, naming the tool", () {
       final strict = {
-        'list_documents': _tool(
+        _listDocuments: _tool(
           'list_documents',
           input: Input.parse(
             JsonObject.of({

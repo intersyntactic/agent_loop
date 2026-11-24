@@ -44,7 +44,7 @@ import 'package:is_effects/is_effects.dart'
 import 'package:is_conversation_shapes/is_conversation_shapes.dart'
     show SourceMessageId, UserSaid;
 import 'package:is_model_vocabulary/is_model_vocabulary.dart'
-    show ToolFailed, ToolRan, ToolRefused;
+    show ToolFailed, ToolName, ToolRan, ToolRefused;
 import 'package:checked_json/checked_json.dart' show JsonObject;
 import 'package:is_docking_station_api/is_docking_station_api.dart';
 import 'package:is_flight_rules/is_flight_rules.dart'
@@ -476,7 +476,7 @@ void main() {
     final link = TrajectoryCrux(chain: chain, returned: returned.stream);
     final outcomeKind = Kind.parse(outcomeOfProposedActionKind)!;
     final tool = OneActionTool.of(
-      name: 'list_documents',
+      name: ToolName.of('list_documents'),
       description: 'Lists the channel folder.',
       input: Input.none,
       action: Fetch(

@@ -27,6 +27,7 @@ import 'package:is_model_vocabulary/is_model_vocabulary.dart'
         ModelTurn,
         ToolAnswered,
         ToolFailed,
+        ToolName,
         ToolRan,
         ToolRefused,
         ToolResult,
@@ -109,7 +110,7 @@ ToolCall _call(String id, String name) => ToolCall(
 final _graph = Origin.parse('https://graph.microsoft.com')!;
 
 final _listDocuments = OneActionTool.of(
-  name: 'list_documents',
+  name: ToolName.of('list_documents'),
   description: 'Lists the channel folder. Returns the first page only.',
   input: Input.none,
   action: Fetch(
