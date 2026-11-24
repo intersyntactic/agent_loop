@@ -505,38 +505,59 @@ Two things are open, and between them they decide what stage 1 can do:
      and folder bound and name from the model. The tool can point at the
      same pattern the rules grant, so the path it builds matches the grant
      by construction. It needs `PathPattern.fill(holes) → WebPath?`, null
-     when a value breaks its hole's rule, tested as a round trip: anything
-     `fill` builds, `matches` accepts, including names with spaces and
-     `%`. **Where `PathPattern` lives:** is_flight_rules depends on
+     when a value breaks its hole's rule. **The rule has to be stated on
+     the filled segment**, as flight-rules-af's probe found. `WebPath`
+     refuses `..` anywhere in the raw path, and `%25` followed by `2E`,
+     `2F`, `5C` or `25`. `Uri.encodeComponent` leaves `.` alone, so
+     `final..docx`, `notes...txt` and `100%2Eplan.docx` all pass today's
+     hole rule but are refused once encoded, and a suffix can do it too
+     (`{name}.docx` filled with `report.` gives `report..docx`). So a hole
+     accepts `v` exactly when `encode(v)` plus the suffix contains no `..`
+     and no `%25` followed by `2E`, `2F`, `5C` or `25`, on top of today's
+     checks. The test runs both ways: `fill(v)` is non-null exactly when
+     the hole accepts `v`, and `matches(fill(v))` always holds. It's
+     generated over realistic filenames with dots, `%`, `@`, `#`, spaces
+     and non-ASCII. A test written from the rule's prose would have passed
+     both earlier versions. **Where `PathPattern` lives:** is_flight_rules depends on
      is_tools_api (for `givenTools`), so is_tools_api can't depend on
      is_flight_rules without a cycle. `PathPattern` moves to
      is_web_address_vocabulary beside `WebPath` and `AddressPrefix`, and
-     both packages depend on that. is_tools_api promises tool packages
-     that it depends on nothing of intersyntactic's but checked_json, so
-     a vocabulary dependency is tools-api-bc's call.
+     both packages depend on that. It meets the vocabulary rule:
+     `PathPattern` and `QueryOptionName` need only `WebPath`'s neighbours
+     and checked_json. is_flight_rules re-exports it, so its API doesn't
+     break. tools-api-bc will admit named vocabularies to is_tools_api's
+     dependency boundary, each listed by name, with a new check over
+     `pubspec.lock` so a vocabulary that gains a non-vocabulary dependency
+     fails is_tools_api's own tests. Its README promise becomes "nothing
+     of intersyntactic's but its vocabularies".
 2. **How a document's bytes become text the model reads.** A fetch of a
    `.docx` returns a zip, and the design already reads documents as
    `fetch` then `docxToPassage` ([Documents stay in drivers](#documents-stay-in-drivers)),
-   which is two actions, so stage 2. airlock-api-b3's smallest step: a
-   tool is one action plus at most one **output transform** from a closed
-   set (docx-to-text, truncate-to-N). It reaches nothing, so the airlock
-   has no stake, and its code is docx-driver-ce's tested parser. **Where
-   it runs is the open point.** Run in the loop's process, a parser bug
-   triggered by a stranger's document would run with the loop's own
-   powers. The loop holds no sign-in, but it writes to its trajectory's
-   chain and proposes actions as that trajectory. That breaks "a
-   stranger's document is parsed only in a confined driver, never in the
-   core." In a confined process, with no logbook socket and only bytes in
-   and text out, it's safe, but something has to start that process, and
-   the loop starting it bypasses the airlock. Options: the transform runs
-   as a confined child with no sockets (the loop's only new power is
-   starting one fixed program); or stage 1 serves only tools whose result
-   is already text, such as listing a folder (Graph returns JSON), and
-   reading a document waits for stage 2.
+   which is two actions, so stage 2. A transform in the loop's own
+   process is out. A parser bug triggered by a stranger's document would
+   run with the loop's power to propose actions as the trajectory and to
+   write its chain. The airlock still bounds each proposal by the rules,
+   but the logbook record that decisions and replay rest on would no
+   longer be trustworthy. That breaks "a stranger's document is parsed
+   only in a confined driver, never in the core". A confined child process
+   started by the loop is out too, because the loop would start a program
+   the airlock never decides, and this design exists to keep exactly one
+   rule: only the airlock reaches the world or starts programs. That
+   leaves two options:
+   - **Recommended (airlock-api-b3, agent-loop-21): stage 1 serves only
+     tools whose result is already text**, such as listing a folder
+     (Graph returns JSON). Reading a document waits for stage 2.
+   - **If reading can't wait:** the transform is an airlock-decided run of
+     a fixed program, an Executable such as `docx-to-passage` in
+     `programsItMayRun`, run by the program driver in a suit with the
+     fetched bytes as its input. That's a fixed two-step pipeline, fetch
+     then that one run, with each step decided. It's the smallest step into
+     stage 2, not a way around it, and the parser is docx-driver-ce's
+     tested code.
 
 With (d) and no transform, stage 1 can list a case folder but can't read
-a document in it. With (d) and a confined transform, it serves CAM's
-reads. Nick decides.
+a document in it. With (d) and the fixed two-step pipeline, it serves
+CAM's reads. Nick decides.
 
 The tool-call text format, `<tool_call>{"name", "input"}</tool_call>`
 (agent_loop branch `feat/tool-calls-as-text`), serves both stages. In stage 2
