@@ -451,7 +451,16 @@ read the clock, so it would undo every property above.)
 
 ### Stage 1's actions
 
-Agreed 24 Nov by airlock-api-b3, flight-rules-af and agent-loop-21.
+Agreed 24 Nov by airlock-api-b3, flight-rules-af, tools-api-bc and
+agent-loop-21, with Nick's decisions marked.
+
+**Stage 1 is built to prove the route (Nick, 24 Nov 13:18).** Its one
+tool lists one fixed case folder, with no input from the model. It
+doesn't serve CAM's document reading. It runs the whole path once, at a
+size where nothing can leak: a module's tool in the trajectory's rules,
+shown to the model, called, proposed by the loop, decided by the airlock,
+and handed back framed. Every later stage adds to a route that already
+works.
 
 **A tool's action is its own closed type, `ToolAction`, in is_tools_api.**
 It is not a free-text name, and it is not the airlock's `Program` set.
@@ -492,7 +501,8 @@ every action on its reach, whatever type a tool used to build it, so
 is_tools_api admits those two vocabularies by name, with its new
 `pubspec.lock` check.
 
-**No arguments in stage 1** (tools-api-bc's proposal, for Nick). The
+**No arguments in stage 1** (tools-api-bc's proposal; decided by Nick,
+24 Nov 13:18). The
 listing's origin, sign-in and path are all fixed, so its input is
 `Input.none`, and nothing uses `OneActionTool.arguments`,
 `InputReference` or `argumentsFor`. They're dropped from stage 1 rather
