@@ -453,24 +453,66 @@ read the clock, so it would undo every property above.)
 
 Agreed 24 Nov by airlock-api-b3, flight-rules-af and agent-loop-21.
 
-**A tool's action is its own closed type, `ToolAction`, in is_tools_api:**
-`read`, `read-bytes`, `fetch`, or `RunExecutable(ProgramName)`. It is not a
-free-text name, and it is not the airlock's `Program` set:
+**A tool's action is its own closed type, `ToolAction`, in is_tools_api.**
+It is not a free-text name, and it is not the airlock's `Program` set.
+**In stage 1 it has one case, `fetch`** (origin, path and sign-in), since
+the folder listing is stage 1's only tool. It's still a sealed class, not
+a plain `Fetch` type. Each other case comes back when a tool needs it, as
+a new case that breaks agent_loop's exhaustive switch until it's mapped
+(agreed by airlock-api-b3, flight-rules-af, tools-api-bc and
+agent-loop-21):
 
-- No model call: it would nest model calls, and let case text leave on a
-  tool's say-so.
-- No `make-web-requests`: posting changes the world. The Teams send is the
-  loop's reply step, not a tool.
-- No `write`: no tool needs it yet.
+- `read` and `read-bytes` come back once `RelativePath` has moved to a
+  vocabulary. It imports `package:path`, which a vocabulary may not, so
+  that move comes first.
+- `RunExecutable(ProgramName)` comes back in the same change as
+  `FlightRules`' check that a given tool's program is in
+  `programsItMayRun`. That's the rule it already applies to
+  `programsItNeeds`, and a case can't land without its check.
+- Never as tool actions: model calls, which would nest model calls and let
+  case text leave on a tool's say-so; `make-web-requests`, since posting
+  changes the world and the Teams send is the loop's reply step; and
+  `write`, until a tool needs it.
 
 agent_loop turns a `ToolAction` into the airlock's `Program` in one
-exhaustive switch, so a new case can't compile until it's mapped. Neither
-is_tools_api nor is_airlock_api depends on the other, so adding a program
-to the airlock gives tools nothing new: widening what tools can do is a
-decision of its own. `FlightRules` refuses rules where a given tool's
-`RunExecutable` names a program not in `programsItMayRun`, the same rule
-it already applies to `programsItNeeds`. A built-in isn't checked in the
-rules: each call is decided on its reach.
+exhaustive switch. Neither is_tools_api nor is_airlock_api depends on the
+other, so adding a program to the airlock gives tools nothing new:
+widening what tools can do is a decision of its own. The airlock decides
+every action on its reach, whatever type a tool used to build it, so
+`ToolAction`'s width is only about what tools are allowed to ask for.
+
+**A fetch needs:**
+- `Origin` and `WebPath`, from is_web_address_vocabulary, which already
+  exists;
+- `SignIn`, which moves from is_effects into its own
+  `is_sign_in_vocabulary` (a sign-in isn't a web address), re-exported by
+  is_effects (effects-0f);
+- no `keep`, because a text-only stage 1 always keeps text.
+
+is_tools_api admits those two vocabularies by name, with its new
+`pubspec.lock` check.
+
+**No arguments in stage 1** (tools-api-bc's proposal, for Nick). The
+listing's origin, sign-in and path are all fixed, so its input is
+`Input.none`, and nothing uses `OneActionTool.arguments`,
+`InputReference` or `argumentsFor`. They're dropped from stage 1 rather
+than kept as API nothing exercises (still in git at tools_api 8074361).
+What comes back with (d) fills a pattern's holes, not an argv, so it
+won't have the same shape. is_tools_api 0.4.0 either way. agent_loop's
+`fillToolCall` shrinks to finding the named tool.
+
+**Release order** (flight-rules-af): is_flight_rules 0.6.0 (`givenTools`)
+ships on the is_tools_api release that has `ToolAction`, not on 0.3.0,
+whose action is free text. Otherwise free-text actions would be written
+into flight-rules.json and need replacing straight away.
+
+**Optional (flight-rules-af):** once a fetch tool's origin and path are
+typed and fixed, `FlightRules` can refuse a given tool whose path no
+grant in `fetchesMayReach` could ever match, judged on origin and path
+only, since the sign-in depends on leases and is decided at run time.
+"This tool can never work" then shows up when the rules are written, not
+as refusals mid-turn. It fails closed either way, so this is a nicety,
+not a hole.
 
 **`readDocument` is a `fetch`** under documents_module's
 `FromPathsMatching` grant. It isn't a new built-in, which would put
