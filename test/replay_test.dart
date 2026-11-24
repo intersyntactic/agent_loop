@@ -37,17 +37,22 @@ ActionProposed _proposed(
   asksTheModel: model,
 );
 
-SaidByAgent _agent(String seed) => SaidByAgent(
+/// The model's reply [seed] to the call proposed as [call].
+SaidByAgent _agent(String seed, String call) => SaidByAgent(
   hash: _id(seed),
+  proposed: _id(call),
   reply: FinishedReply(text: seed),
 );
+
+ModelCallRefused _refused(String seed, String call) =>
+    ModelCallRefused(hash: _id(seed), proposed: _id(call));
 
 void main() {
   test('a message already answered by a model call is not owed', () {
     final history = [
       _user('u1'),
       _proposed('p1', 1),
-      _agent('a1'),
+      _agent('a1', 'p1'),
       _proposed('p2', 1, action: 1, model: false), // the answer
     ];
 
@@ -58,7 +63,7 @@ void main() {
     final history = [
       _user('u1'),
       _proposed('p1', 1),
-      _agent('a1'),
+      _agent('a1', 'p1'),
       _user('u2'),
     ];
 
@@ -90,6 +95,62 @@ void main() {
       unansweredTurn([_user('u1'), _proposed('p1', 1, model: false)])?.hash,
       _id('u1'),
     );
+  });
+
+  test('a reply goes where the call it answers was proposed, even when a '
+      'message arrived before the reply did', () {
+    final input = trajectoryInput([
+      _user('u1'),
+      _proposed('p1', 0),
+      _user('u2'),
+      _agent('a1', 'p1'),
+    ]);
+
+    expect(
+      [for (final t in input) '${t.role.name}:${t.text}'],
+      ['user:u1', 'assistant:a1', 'user:u2'],
+    );
+  });
+
+  group('modelCallsSettled', () {
+    test('a call with no end in history is not settled, so a message that '
+        'arrived during it waits for its reply', () {
+      final history = [_user('u1'), _proposed('p1', 0), _user('u2')];
+
+      expect(modelCallsSettled(history, turnsUsed: 1), isFalse);
+      expect(
+        modelCallsSettled([...history, _agent('a1', 'p1')], turnsUsed: 1),
+        isTrue,
+      );
+    });
+
+    test('a refused call has ended too', () {
+      expect(
+        modelCallsSettled([
+          _user('u1'),
+          _proposed('p1', 0),
+          _refused('r1', 'p1'),
+        ], turnsUsed: 1),
+        isTrue,
+      );
+    });
+
+    test('the loop\'s latest call counts before its proposal arrives', () {
+      final history = [
+        _user('u1'),
+        _proposed('p1', 0),
+        _agent('a1', 'p1'),
+        _user('u2'),
+      ];
+
+      // Turn 1 has been asked, but its proposal is not in history yet.
+      expect(modelCallsSettled(history, turnsUsed: 2), isFalse);
+      expect(modelCallsSettled(history, turnsUsed: 1), isTrue);
+    });
+
+    test('a loop that has asked nothing is settled', () {
+      expect(modelCallsSettled([_user('u1')], turnsUsed: 0), isTrue);
+    });
   });
 
   test('the latest place is by turn, then the reply after the model call; '
