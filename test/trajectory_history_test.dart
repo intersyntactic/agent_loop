@@ -11,6 +11,7 @@ import 'dart:typed_data';
 import 'package:agent_loop/agent_loop.dart';
 import 'package:is_airlock_api/is_airlock_api.dart'
     show
+        ActionProposedByAgentLoop,
         Crux,
         Done,
         ModelCall,
@@ -32,8 +33,13 @@ import 'package:is_effects/is_effects.dart'
         PathPrefix,
         Ran,
         Refused,
+        SignIn,
+        TextBody,
+        WebPath,
+        WebResponse,
         encodeModelReply,
-        encodeOutcome;
+        encodeOutcome,
+        encodeWebResponse;
 import 'package:is_conversation_shapes/is_conversation_shapes.dart'
     show SourceMessageId, UserSaid;
 import 'package:checked_json/checked_json.dart' show JsonObject;
@@ -46,6 +52,8 @@ import 'package:is_logbook_client/is_logbook_client.dart' show LogbookReader;
 import 'package:is_logbook_client/is_logbook_client.dart' as client;
 import 'package:is_shapes/is_shapes.dart'
     show ActorId, DecidedBy, EntryId, TrajectoryId;
+import 'package:is_tools_api/is_tools_api.dart'
+    show Fetch, Input, OneActionTool;
 import 'package:test/test.dart';
 
 void main() {
@@ -169,10 +177,13 @@ void main() {
     expect(found[1], isA<TurnOnChain>());
     expect((found[1] as TurnOnChain).hash, turnHash);
 
-    expect(jsonDecode(encodeModelInput(trajectoryInput(found))), [
-      {'role': 'user', 'content': 'hey are you there'},
-      {'role': 'user', 'content': 'a loop-written turn'},
-    ]);
+    expect(
+      jsonDecode(encodeModelInput(trajectoryInput(found, tools: const {}))),
+      [
+        {'role': 'user', 'content': 'hey are you there'},
+        {'role': 'user', 'content': 'a loop-written turn'},
+      ],
+    );
   });
 
   group('the model a trajectory started under', () {
@@ -259,6 +270,7 @@ void main() {
         startingModel: claude,
         programsItMayRun: const [],
         programsItNeeds: const [],
+        givenTools: const [],
       )!.toJson();
       final found = await admit([('first', rules), ('follow-up', null)]);
 
@@ -272,10 +284,13 @@ void main() {
       expect(started.replyEndpoint, endpoint);
       expect(started.trajectory.hex, started.hash.hex);
       // The rules are not part of the conversation.
-      expect(jsonDecode(encodeModelInput(trajectoryInput(found))), [
-        {'role': 'user', 'content': 'first'},
-        {'role': 'user', 'content': 'follow-up'},
-      ]);
+      expect(
+        jsonDecode(encodeModelInput(trajectoryInput(found, tools: const {}))),
+        [
+          {'role': 'user', 'content': 'first'},
+          {'role': 'user', 'content': 'follow-up'},
+        ],
+      );
     });
 
     test('rules whose starting sign-in they do not allow give no model, '
@@ -402,6 +417,7 @@ void main() {
                   ? 'cut'
                   : '?'}',
             ModelCallRefused() => 'refused',
+            FetchEnded() ||
             SaidByUser() ||
             TurnOnChain() ||
             TrajectoryStarted() ||
@@ -425,15 +441,156 @@ void main() {
         expect(proposed, found[i - 1].hash);
       }
     }
-    expect(modelCallsSettled(found, turnsUsed: 4), isTrue);
+    expect(
+      actionsSettled(found, latestOwn: ProposedForTheModelCall.at(3)),
+      isTrue,
+    );
     expect(lastPlace(found), ProposedForTheModelCall.at(3));
     // A cut-off reply reaches the model marked as cut off, never as finished.
-    expect(jsonDecode(encodeModelInput(trajectoryInput(found))), [
-      {'role': 'assistant', 'content': 'yes, here'},
-      {
-        'role': 'assistant',
-        'content': 'half an\n\n(This reply was cut off before it finished.)',
-      },
-    ]);
+    expect(
+      jsonDecode(encodeModelInput(trajectoryInput(found, tools: const {}))),
+      [
+        {'role': 'assistant', 'content': 'yes, here'},
+        {
+          'role': 'assistant',
+          'content': 'half an\n\n(This reply was cut off before it finished.)',
+        },
+      ],
+    );
   });
+
+  test('a tool\'s fetch is proposed as the tool says, at the turn\'s one '
+      'intent, and its outcome comes back as what the model is shown', () async {
+    final rootResult = await rawWriter.write(
+      Kind.usersAssignedToTrajectory,
+      Uint8List.fromList(
+        '{"trajectory":"$trajectoryUnderTest",'
+                '"mission":"${client.ObjectId.of(Uint8List.fromList('m'.codeUnits)).hex}",'
+                '"loopUser":"$uid","suit":"1002"}'
+            .codeUnits,
+      ),
+    );
+    final root = (rootResult as client.Written).entry;
+    final chain = TrajectoryChain(
+      writer: LogbookWriter('${tmp.path}/logbook.sock'),
+      kind: turnKind,
+      tip: root,
+    );
+    final returned = StreamController<ReturnedResult>();
+    final link = TrajectoryCrux(chain: chain, returned: returned.stream);
+    final outcomeKind = Kind.parse(outcomeOfProposedActionKind)!;
+    final tool = OneActionTool.of(
+      name: 'list_documents',
+      description: 'Lists the channel folder.',
+      input: Input.none,
+      action: Fetch(
+        Origin.parse('https://graph.microsoft.com')!,
+        WebPath.parse('/v1.0/drives/b!xyz/items/01F/children')!,
+        SignIn.parse('enspyr-test')!,
+      ),
+    );
+
+    // Runs the tool at [turn]'s intent, answering as the airlock would.
+    Future<String> run(int turn, Outcome<WebResponse> outcome) async {
+      final before = chain.tip;
+      final done = toolAction(tool)
+          .next(Crux.forIntent(link, turn: turn, intent: 0));
+      while (chain.tip == before) {
+        await Future<void>.delayed(const Duration(milliseconds: 10));
+      }
+      final proposedEntry = chain.tip!;
+      final proposed = EntryId.parse(proposedEntry.hex)!;
+      final body = jsonEncode(
+        outcomeOfProposedActionToJson(
+          proposed,
+          encodeOutcome(outcome, encodeWebResponse),
+        ),
+      );
+      final written = await rawWriter.write(
+        outcomeKind,
+        Uint8List.fromList(utf8.encode(body)),
+      );
+      returned.add((
+        proposed: proposed,
+        resultEntry: EntryId.parse((written as client.Written).entry.hex)!,
+        body: body,
+      ));
+      await done;
+      return proposedEntry.hex;
+    }
+
+    final firstProposal = await run(
+      0,
+      const Ran(WebResponse(status: 200, body: TextBody('3 files'))),
+    );
+    await run(
+      1,
+      const Ran(WebResponse(status: 403, refusedBecause: 'accessDenied')),
+    );
+    await run(2, const Refused('no grant lets it out'));
+
+    final items = <TrajectoryFeedItem>[];
+    final sub = followTrajectoryHistory(
+      reader,
+      turnKind: turnKind,
+      chainRoot: root,
+    ).listen(items.add);
+    await Future<void>.delayed(const Duration(milliseconds: 200));
+    await sub.cancel();
+    await returned.close();
+    final found = items.whereType<TrajectoryEvent>().toList();
+
+    expect(
+      [
+        for (final e in found)
+          switch (e) {
+            ActionProposed(:final place, :final program) =>
+              'proposed $place ${program.name}',
+            FetchEnded(:final text, :final isError) =>
+              'ended${isError ? ' error' : ''}: $text',
+            SaidByAgent() ||
+            ModelCallRefused() ||
+            SaidByUser() ||
+            TurnOnChain() ||
+            TrajectoryStarted() ||
+            TrajectoryRulesUnreadable() => '${e.runtimeType}',
+          },
+      ],
+      [
+        'proposed 0.0.0 fetchFromWeb',
+        'ended: 3 files',
+        'proposed 1.0.0 fetchFromWeb',
+        'ended error: the site answered 403: accessDenied',
+        'proposed 2.0.0 fetchFromWeb',
+        'ended error: the fetch was refused: no grant lets it out',
+      ],
+    );
+    // The proposal carries the tool's own address and sign-in, and keeps
+    // the body as text.
+    final proposal = found.firstWhere((e) => e.hash.hex == firstProposal);
+    final entry = await _entryBody(reader, proposal.hash);
+    expect(jsonDecode(entry), {
+      'place': [0, 0, 0],
+      'program': 'fetch',
+      'input': {
+        'origin': 'https://graph.microsoft.com',
+        'path': '/v1.0/drives/b!xyz/items/01F/children',
+        'signIn': 'enspyr-test',
+        'keep': 'text',
+      },
+    });
+  });
+}
+
+/// The body of [id]'s entry, read from [reader]'s backlog.
+Future<String> _entryBody(LogbookReader reader, client.ObjectId id) async {
+  await for (final item in reader.subscribe(
+    kinds: {Kind.parse(ActionProposedByAgentLoop.kind)!},
+  )) {
+    if (item case client.Entry(id: final entryId, :final body)
+        when entryId == id) {
+      return utf8.decode(body);
+    }
+  }
+  throw StateError('no entry ${id.hex}');
 }

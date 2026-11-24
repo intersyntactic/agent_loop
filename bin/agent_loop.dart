@@ -27,6 +27,13 @@
 /// When the model call is refused, the turn's reply says why, so its sender
 /// decides what to do. A refused reply is only logged: the way back to the
 /// person is what failed.
+///
+/// The model is shown the tools the trajectory's rules give it
+/// ([toolsPrompt]). A reply that calls one ends its turn with the tool's
+/// action, proposed at the turn's one intent ([toolAction]); the next turn
+/// asks the model again with the result. What to do next is always read
+/// from the history ([stepOwed]), so a restarted loop picks up a tool call
+/// where it left off.
 library;
 
 import 'dart:io';
@@ -35,19 +42,38 @@ import 'package:agent_loop/agent_loop.dart';
 import 'package:is_effects/is_effects.dart'
     show ModelReply, ModelUsage, ProgramName;
 import 'package:is_airlock_api/is_airlock_api.dart'
-    show Action, Crux, Done, Executable, Failed, ModelCall, Program, Result;
+    show
+        Action,
+        Crux,
+        Done,
+        Executable,
+        Failed,
+        ModelCall,
+        PlaceInTrajectory,
+        Program,
+        ProposedForAnIntent,
+        ProposedForTheModelCall,
+        ProposedForTheReply,
+        Result;
 import 'package:is_flight_rules/is_flight_rules.dart'
     show WhatMayLeaveThisMachine;
 import 'package:is_logbook_client/is_logbook_client.dart'
     show Kind, LogbookReader, ObjectId;
 import 'package:is_shapes/is_shapes.dart' show EntryId;
+import 'package:is_tools_api/is_tools_api.dart' show OneActionTool;
 
-/// Until the tool-intent-as-text design lands (task 10), a fixed, labelled
-/// placeholder: enough to exercise recording for real, not what the demo's
+/// A fixed, labelled placeholder for what the system prompt says before
+/// its tools: enough to exercise recording for real, not what a demo's
 /// system prompt will actually say.
 const _placeholderSystemPrompt =
-    'You are the agent in this conversation. Reply in plain text; no tools '
-    'are available.';
+    'You are the agent in this conversation. Reply in plain text.';
+
+/// The system prompt for a trajectory given [tools]: constant for the
+/// trajectory, since its rules are.
+String _systemPrompt(Map<String, OneActionTool> tools) => [
+  _placeholderSystemPrompt,
+  if (tools.isNotEmpty) toolsPrompt(tools.values),
+].join('\n\n');
 
 const _turnKind = 'turn';
 
@@ -91,6 +117,13 @@ Future<void> main(List<String> args) async {
 
   final history = <TrajectoryEvent>[];
   var nextTurn = 0;
+  // The latest place this loop proposed at: until its proposal is in
+  // history, nothing next is owed.
+  PlaceInTrajectory? latestOwn;
+
+  Map<String, OneActionTool> tools() =>
+      history.whereType<TrajectoryStarted>().firstOrNull?.rules.givenTools ??
+      const {};
 
   // Says [text] back to whoever started the trajectory, as [turn]'s reply,
   // footered with [usage] when the model call reported it. A refused reply
@@ -135,6 +168,7 @@ Future<void> main(List<String> args) async {
       ),
       Crux.forTheReply(link, turn: turn),
     );
+    latestOwn = ProposedForTheReply.at(turn, 0);
     switch (sent) {
       case Done(:final value):
         stdout.writeln('agent_loop: $what sent, in $value request(s)');
@@ -145,26 +179,31 @@ Future<void> main(List<String> args) async {
     }
   }
 
-  Future<void> answer(SaidByUser event) async {
+  // Asks the model at the next turn, to answer [after]: a message, or a
+  // tool call's result. A reply that calls a tool is said to no one: the
+  // history then owes its tool's action.
+  Future<void> askTheModel(ObjectId after) async {
     final starting = startingModel(history);
     final model = starting.model;
     if (model == null) {
       stderr.writeln(
-        'agent_loop: ERROR not answering ${event.hash.hex}: no model to '
+        'agent_loop: ERROR not answering ${after.hex}: no model to '
         'call, since ${starting.why}',
       );
       return;
     }
-    final request = encodeModelInput(trajectoryInput(history));
+    final given = tools();
+    final request = encodeModelInput(trajectoryInput(history, tools: given));
     final requestHash = await recordModelRequestOnTrajectory(
       chain,
-      systemPrompt: _placeholderSystemPrompt,
+      systemPrompt: _systemPrompt(given),
       request: request,
       builtFrom: [for (final e in history) e.hash],
     );
     stdout.writeln('agent_loop: recorded model-request ${requestHash.hex}');
 
     final turn = nextTurn++;
+    latestOwn = ProposedForTheModelCall.at(turn);
     final asked = Program.askTheModel.runOrRefusal<ModelReply>(
       ModelCall(
         signIn: model.signIn,
@@ -179,10 +218,11 @@ Future<void> main(List<String> args) async {
     switch (outcome) {
       case Done(:final value):
         stdout.writeln('agent_loop: model replied: ${value.text}');
+        if (readModelReply(value.text) is! AnswerText) return;
         await sayBack(
           turn,
           value.text,
-          'answer to ${event.hash.hex}',
+          'answer to ${after.hex}',
           usage: value.usage,
         );
       case Failed(:final why):
@@ -199,12 +239,33 @@ Future<void> main(List<String> args) async {
     }
   }
 
-  // The message owed an answer now, if any: none while a model call this
-  // loop made has not yet ended in its history, so that call's reply is in
-  // the next request rather than after it.
-  SaidByUser? owedNow() => modelCallsSettled(history, turnsUsed: nextTurn)
-      ? unansweredTurn(history)
-      : null;
+  // Proposes [tool]'s action at [place]; its outcome arrives in history.
+  Future<void> runTool(ProposedForAnIntent place, OneActionTool tool) async {
+    final ProposedForAnIntent(:turn, :intent) = place;
+    latestOwn = place;
+    stdout.writeln('agent_loop: running tool ${tool.name} at $place');
+    await toolAction(tool)
+        .next(Crux.forIntent(link, turn: turn, intent: intent));
+  }
+
+  // Does whatever the history owes now, if anything.
+  Future<void> doOwed() async {
+    switch (stepOwed(history, tools: tools(), latestOwn: latestOwn)) {
+      case null:
+        return;
+      case ModelCallOwed(:final after):
+        await askTheModel(after);
+      case ToolActionOwed(:final place, :final tool):
+        await runTool(place, tool);
+      case ModelCallsSpent(:final turn):
+        await sayBack(
+          turn,
+          'I stopped after $maxModelCallsPerMessage model calls for this '
+              'message without an answer.',
+          'notice that its model calls are spent',
+        );
+    }
+  }
 
   // The backlog is only read, never answered as it arrives: a message in it
   // may already have its answer further on. Once caught up, the loop
@@ -224,16 +285,13 @@ Future<void> main(List<String> args) async {
         }
         final last = lastPlace(history);
         nextTurn = (last?.turn ?? -1) + 1;
-        final owed = owedNow();
-        stdout.writeln(
-          'agent_loop: caught up at place ${last ?? 'none'}, '
-          '${owed == null ? 'nothing owed now' : 'answering ${owed.hash.hex}'}',
-        );
-        if (owed != null) await answer(owed);
+        latestOwn = last;
+        stdout.writeln('agent_loop: caught up at place ${last ?? 'none'}');
+        await doOwed();
       case TrajectoryEvent event:
         history.add(event);
         if (!caughtUp) continue;
-        if (owedNow() case final owed?) await answer(owed);
+        await doOwed();
     }
   }
 }
