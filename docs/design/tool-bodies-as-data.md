@@ -468,6 +468,20 @@ tenant is paused. The trajectory's rules grant a Graph read of that one
 folder, under a sign-in that can make it. infra-dc sets up the tenant,
 the folder and the sign-in.
 
+**A result can carry a key, not just data (documents-module-21).** By
+default, Graph's folder listing gives every file an
+`@microsoft.graph.downloadUrl`: a short-lived link that downloads the file
+with no sign-in. The airlock stops the model fetching it, but nothing
+stops the model copying it into a reply, and then whoever reads the reply
+can download the file. So the listing tool asks only for what the model
+needs, `?$select=name,size,lastModifiedDateTime,folder`, and the field
+never reaches the model. The grant's pattern already allows `$select`.
+Stage 1's grant is listing-only (`ChannelFiles.listingGrant`), with no
+file `/content` read. The general rule for every tool: a result is
+something the model may repeat, so a tool asks for no field that grants
+access by being known. That includes pre-signed links, tokens and share
+links.
+
 **A tool's action is its own closed type, `ToolAction`, in is_tools_api.**
 It is not a free-text name, and it is not the airlock's `Program` set.
 **In stage 1 it has one case, `fetch`** (origin, path and sign-in), since
