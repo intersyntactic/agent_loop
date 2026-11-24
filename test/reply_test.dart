@@ -35,7 +35,7 @@ import 'package:is_docking_station_api/is_docking_station_api.dart'
         RepliesInSlackConversation,
         RepliesUnderWebAddress,
         SlackChannelId,
-        SlackThreadTimestamp;
+        SlackMessageTimestamp;
 import 'package:is_shapes/is_shapes.dart' show EntryId, TrajectoryId;
 import 'package:test/test.dart';
 
@@ -263,7 +263,7 @@ void main() {
       final slack = RepliesInSlackConversation(
         origin: Origin.parse('https://slack.com')!,
         channel: SlackChannelId.parse('C0123ABC')!,
-        thread: SlackThreadTimestamp.parse('1700000000.000100'),
+        thread: SlackMessageTimestamp.parse('1700000000.000100'),
       );
       expect(replyAddressFor(slack), isNull);
     });

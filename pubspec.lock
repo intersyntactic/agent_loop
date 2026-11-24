@@ -189,10 +189,10 @@ packages:
     dependency: "direct main"
     description:
       name: is_docking_station_api
-      sha256: cb2c228c8f01ed8fae796a6e0626de512d0210d4659d9f566c059fdd65024392
+      sha256: "7229805d1b8a62bd4e4fcf0601063cbe73bb26ee8bb2ac8614fa182d81e68dc4"
       url: "https://pub.dev"
     source: hosted
-    version: "0.5.0"
+    version: "0.6.0"
   is_effects:
     dependency: "direct main"
     description:
@@ -246,6 +246,14 @@ packages:
     description:
       name: is_path_confinement
       sha256: b09d4b18aa39366b63497117be8adbd9f0cfb987a3eb2db437d053f3bc11ea45
+      url: "https://pub.dev"
+    source: hosted
+    version: "0.1.0"
+  is_reply_vocabulary:
+    dependency: transitive
+    description:
+      name: is_reply_vocabulary
+      sha256: c337aae16ba39c6cdc0689af8dcaae8babc94ab2c92d16832988b7d3f74ffb99
       url: "https://pub.dev"
     source: hosted
     version: "0.1.0"
