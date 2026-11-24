@@ -582,13 +582,33 @@ an opaque token with digits and symbols, so **today's rule refuses the
 next page**, and `$top=500` is refused too, since a number isn't a word.
 So a stage-1 listing returns Graph's first page only. That's enough when
 a case folder is smaller than a page. It isn't when one is larger, and
-the model would see a listing cut short with nothing to say so. Before
-stage 1 ships, either the listing tool tells the model the result is a
-first page whenever Graph's response carries `@odata.nextLink`, or the
-grant gains a query rule for an opaque token. The token comes from
-Graph's own response and the path stays fixed, so a forged token could
-only reach the same listing. Graph's real page size for a folder's
-children, and CAM's real folder sizes, haven't been checked.
+the model would see a listing cut short with nothing to say so. A
+listing that silently drops items is worse than a refusal. The steps, in
+order (airlock-api-b3):
+
+1. **Always, and ships with stage 1: a "first page only" notice** whenever
+   the response carries `@odata.nextLink`. It costs nothing in the rules.
+   Still open is who writes it without putting Graph knowledge into the
+   loop. The raw JSON the model reads already contains `@odata.nextLink`,
+   so the model can see that more exists, but only if it knows what that
+   means. Options: the tool's description says so, which is module text
+   written for its tool; or the frame names a page marker the module
+   declares. It isn't the loop recognising Graph's field.
+2. **If CAM's folders are bigger than one page: a whole-number query rule
+   for `$top` only**, digits with an upper bound. A number can't carry
+   text, so it stays within what the word-list rule is for: it shapes the
+   read and says nothing. Measure first: Graph's real page size for
+   `/children`, its largest allowed `$top`, and CAM's biggest folder. None
+   of the three has been checked. Nick sees this before flight-rules-af
+   adds it.
+3. **Last: an opaque-token rule for `$skiptoken`.** A forged token reaches
+   only the same listing, but it would be the first rule that lets free
+   text leave in a query string. The model could put case words into the
+   token, and they'd go to Microsoft under our sign-in. That's low harm
+   (our own tenant's logs), but it's a channel the rules don't have today.
+   If paging is ever needed, the better shape is for the tool to follow
+   `nextLink` itself, copying Graph's token unchanged and never the
+   model's. That's two steps, so stage 2, alongside the deferred reads.
 
 Question 1, (d): Nick hasn't decided. Stage 1 doesn't need it, either
 way.
