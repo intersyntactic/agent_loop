@@ -563,7 +563,34 @@ store it needs to keep a document's bytes out of the loop and the
 logbook, are stage 2's first piece, built against CAM's case review
 report.
 
-Question 1, (d), is still open.
+**What that leaves (d) to do (airlock-api-b3).** The stage-1 tool left is
+listing a folder, `/v1.0/drives/{drive}/items/{folder}/children`, and both
+holes are bound when the tool is configured. The model supplies nothing in
+the path, so a listing tool's path can be a literal `WebPath`, and stage 1
+needs no `fill`. (d) is needed the first time the model names something
+that ends up in a path, such as reading by name or opening a subfolder,
+which is the work deferred to stage 2. Recommendation: agree to (d) in
+principle, and build nothing until reads come back.
+
+**Paging, checked before stage 1 ships.** Graph returns a long listing in
+pages, and the next page's address carries `$skiptoken=<token>` in its
+query. A pattern's query rule (is_flight_rules 0.5.0,
+`path_pattern.dart:68` and `:136`) allows only options the grant names,
+each once, each with a value of letters separated by commas
+(`^[A-Za-z]+(,[A-Za-z]+)*$`, made for `$select=name,size`). A skiptoken is
+an opaque token with digits and symbols, so **today's rule refuses the
+next page**, and `$top=500` is refused too, since a number isn't a word.
+So a stage-1 listing returns Graph's first page only. That's enough when
+a case folder is smaller than a page. It isn't when one is larger, and
+the model would see a listing cut short with nothing to say so. Before
+stage 1 ships, either the listing tool tells the model the result is a
+first page whenever Graph's response carries `@odata.nextLink`, or the
+grant gains a query rule for an opaque token. The token comes from
+Graph's own response and the path stays fixed, so a forged token could
+only reach the same listing. Graph's real page size for a folder's
+children, and CAM's real folder sizes, haven't been checked.
+
+Question 1, (d), is agreed in principle and not built.
 
 The tool-call text format, `<tool_call>{"name", "input"}</tool_call>`
 (agent_loop branch `feat/tool-calls-as-text`), serves both stages. In stage 2
