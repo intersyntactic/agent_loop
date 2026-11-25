@@ -394,7 +394,7 @@ void main() {
     final cutHash = await answer(3, const Ran(CutOffReply(text: 'half an')));
     // A summary call: its marker on the chain first, then its own turn.
     await chain.append(
-      HistorySummaryAsked(turn: 4, upTo: ranHash).toJson(),
+      HistorySummaryAsked(step: 4, upTo: ranHash).toJson(),
       const Own(),
     );
     await answer(4, const Ran(FinishedReply(text: 'they asked where')));
@@ -427,7 +427,7 @@ void main() {
                   : '?'}',
             ModelCallRefused() => 'refused',
             SummaryAsked(:final asked) =>
-              'summary asked at ${asked.turn} '
+              'summary asked at ${asked.step} '
                   'up to ${asked.upTo == ranHash ? 'ran' : '?'}',
             SummaryByAgent(:final reply, :final upTo) =>
               'summary "${reply.text}" '

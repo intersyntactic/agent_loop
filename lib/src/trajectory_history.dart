@@ -9,7 +9,7 @@
 /// that produced it ([SaidByAgent]), never from a turn: a loop writes no
 /// reply turn of its own.
 ///
-/// A summary call (lib/src/history_compaction.dart) is a turn of its own:
+/// A summary call (lib/src/history_compaction.dart) is a step of its own:
 /// its [HistorySummaryAsked] marker arrives as [SummaryAsked], its proposal
 /// as an [ActionProposed] for [ProposedProgram.askTheModelForASummary], and
 /// its reply as a [SummaryByAgent], never a [SaidByAgent].
@@ -271,7 +271,7 @@ final _outcomeKind = Kind.parse(outcomeOfProposedActionKind)!;
 /// The loop's own proposals arrive too, each as an [ActionProposed], and
 /// the airlock's outcome of each: an outcome answering a proposal that
 /// asked the model, if the model ran, becomes a [SaidByAgent], or a
-/// [SummaryByAgent] when a [HistorySummaryAsked] marker named its turn
+/// [SummaryByAgent] when a [HistorySummaryAsked] marker named its step
 /// first. A proposal the airlock could not read as one is skipped.
 ///
 /// Built with [Stream.expand] rather than `async*`, for the same reason as
@@ -287,7 +287,7 @@ Stream<TrajectoryFeedItem> followTrajectoryHistory(
   // answer.
   final modelCalls = <EntryId, ObjectId?>{};
   final fetches = <EntryId>{};
-  // Each summary marker's turn, to the last event it summarizes.
+  // Each summary marker's step, to the last event it summarizes.
   final summariesAsked = <int, ObjectId>{};
   final kinds = {
     turnKind,
@@ -371,7 +371,7 @@ Stream<TrajectoryFeedItem> followTrajectoryHistory(
       onChain.add(entry.id);
       final turn = TurnEnvelope.decode(entry.body);
       if (HistorySummaryAsked.fromJson(turn.node) case final asked?) {
-        summariesAsked[asked.turn] = asked.upTo;
+        summariesAsked[asked.step] = asked.upTo;
         return [SummaryAsked(hash: entry.id, asked: asked)];
       }
       return [TurnOnChain(hash: entry.id, turn: turn)];
@@ -711,7 +711,7 @@ const maxModelCallsPerMessage = 8;
 ///
 /// With a [compactMargin], a summary is owed too: first one whose
 /// [SummaryAsked] marker was written but whose call never went out, at the
-/// marker's turn; otherwise, when nothing else is owed, one up to a final
+/// marker's step; otherwise, when nothing else is owed, one up to a final
 /// reply that left less than [compactMargin] tokens of the context window
 /// ([replyOverTheLine]). Never in the middle of a tool loop, so a summary's
 /// boundary never parts a reply's tool calls from their results.
@@ -724,21 +724,21 @@ StepOwed? stepOwed(
   if (!actionsSettled(history, latestOwn: latestOwn)) return null;
   if (compactMargin == null) return _conversationStepOwed(history, tools);
   if (_summaryNeverProposed(history) case final asked?) {
-    return SummaryOwed(upTo: asked.upTo, turn: asked.turn);
+    return SummaryOwed(upTo: asked.upTo, step: asked.step);
   }
   if (_conversationStepOwed(history, tools) case final owed?) return owed;
   return switch (replyOverTheLine(history, compactMargin)) {
-    final over? => SummaryOwed(upTo: over.hash, turn: null),
+    final over? => SummaryOwed(upTo: over.hash, step: null),
     null => null,
   };
 }
 
-/// The latest [HistorySummaryAsked] marker in [history] whose turn has no
+/// The latest [HistorySummaryAsked] marker in [history] whose step has no
 /// model call proposed: the loop wrote it, then stopped before proposing.
 HistorySummaryAsked? _summaryNeverProposed(List<TrajectoryEvent> history) {
   final asked = history.whereType<SummaryAsked>().lastOrNull?.asked;
   if (asked == null) return null;
-  final place = ProposedForTheModelCall.at(asked.turn);
+  final place = ProposedForTheModelCall.at(asked.step);
   final proposed = history.any((e) => e is ActionProposed && e.place == place);
   return proposed ? null : asked;
 }
@@ -825,13 +825,13 @@ final class ModelCallsSpent extends StepOwed {
 }
 
 /// Ask the model to summarize the conversation up to and including the
-/// event [upTo], as a turn of its own: at [turn] when its marker is
-/// already written, otherwise at the loop's next turn, marking it first.
+/// event [upTo], as a step of its own: at [step] when its marker is
+/// already written, otherwise at the loop's next step, marking it first.
 final class SummaryOwed extends StepOwed {
-  const SummaryOwed({required this.upTo, required this.turn});
+  const SummaryOwed({required this.upTo, required this.step});
 
   final ObjectId upTo;
-  final int? turn;
+  final int? step;
 }
 
 /// The latest place this loop has proposed at in [history], or null for

@@ -1,7 +1,7 @@
 // Proves the loop compacts on the context a final reply actually left, as a
-// turn of its own once nothing else is owed, shows the model a summary in
+// step of its own once nothing else is owed, shows the model a summary in
 // place of what it covers, never mistakes a summary for an answer, and
-// proposes a marked summary at the same turn after a restart.
+// proposes a marked summary at the same step after a restart.
 import 'dart:typed_data';
 
 import 'package:agent_loop/agent_loop.dart';
@@ -63,10 +63,10 @@ SaidByAgent _agent(String seed, String call, {ModelUsage? usage}) =>
       reply: FinishedReply(text: seed, usage: usage),
     );
 
-/// The marker for a summary at [turn] up to [upTo].
-SummaryAsked _asked(String seed, int turn, String upTo) => SummaryAsked(
+/// The marker for a summary at [step] up to [upTo].
+SummaryAsked _asked(String seed, int step, String upTo) => SummaryAsked(
   hash: _id(seed),
-  asked: HistorySummaryAsked(turn: turn, upTo: _id(upTo)),
+  asked: HistorySummaryAsked(step: step, upTo: _id(upTo)),
 );
 
 /// The summary call at [turn].
@@ -100,9 +100,9 @@ List<ObjectId> _hashes(List<TrajectoryEvent> events) => [
 ];
 
 /// A summary owed up to [upTo], at [turn] when already marked.
-Matcher _summaryOwed(String upTo, int? turn) => isA<SummaryOwed>()
+Matcher _summaryOwed(String upTo, int? step) => isA<SummaryOwed>()
     .having((s) => s.upTo, 'upTo', _id(upTo))
-    .having((s) => s.turn, 'turn', turn);
+    .having((s) => s.step, 'step', step);
 
 /// A model call owed to answer [after].
 Matcher _answerOwed(String after) =>
@@ -362,15 +362,15 @@ void main() {
   });
 
   test('HistorySummaryAsked round-trips and reads no other node as one', () {
-    final asked = HistorySummaryAsked(turn: 7, upTo: _id('a1'));
+    final asked = HistorySummaryAsked(step: 7, upTo: _id('a1'));
     final back = HistorySummaryAsked.fromJson(asked.toJson())!;
 
-    expect((back.turn, back.upTo), (7, _id('a1')));
+    expect((back.step, back.upTo), (7, _id('a1')));
     expect(HistorySummaryAsked.fromJson({'shape': 'UserSaid'}), isNull);
     expect(
       HistorySummaryAsked.fromJson({
         'shape': HistorySummaryAsked.shapeName,
-        'turn': 7,
+        'step': 7,
         'upTo': 'not a hash',
       }),
       isNull,
@@ -378,7 +378,7 @@ void main() {
     expect(
       HistorySummaryAsked.fromJson({
         'shape': HistorySummaryAsked.shapeName,
-        'turn': -1,
+        'step': -1,
         'upTo': _id('a1').hex,
       }),
       isNull,

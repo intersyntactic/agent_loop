@@ -37,7 +37,7 @@
 /// so a restarted loop picks up its calls where it left off.
 ///
 /// When a final reply leaves less than `--compact-margin` tokens of the
-/// model's context window, the loop asks the model for a summary as a turn
+/// model's context window, the loop asks the model for a summary as a step
 /// of its own, once nothing else is owed, and later requests send the
 /// summary in place of what it covers (lib/src/history_compaction.dart).
 library;
@@ -266,14 +266,14 @@ Future<Never> _run(_Options options) async {
     }
   }
 
-  // Asks the model to summarize the window up to [upTo], as a turn of its
-  // own: at [markedTurn] when its marker is already written, otherwise at
-  // the next turn, writing the marker first. Offers the same tools as the
+  // Asks the model to summarize the window up to [upTo], as a step of its
+  // own: at [markedStep] when its marker is already written, otherwise at
+  // the next step, writing the marker first. Offers the same tools as the
   // answer did, so the provider's cache of that prefix carries over. Its
   // outcome arrives in history as a [SummaryByAgent], which [requestWindow]
   // puts in place of what it covers; a refused, cut-off or tool-calling one
   // leaves the window whole.
-  Future<void> summarize(ObjectId upTo, int? markedTurn) async {
+  Future<void> summarize(ObjectId upTo, int? markedStep) async {
     final model = startingModel(history).model;
     final given = tools();
     final summary = summaryRequest(history, upTo, tools: given);
@@ -284,12 +284,12 @@ Future<Never> _run(_Options options) async {
       );
       return;
     }
-    final turn = markedTurn ?? nextTurn;
+    final turn = markedStep ?? nextTurn;
     nextTurn = turn + 1;
     latestOwn = ProposedForTheModelCall.at(turn);
-    if (markedTurn == null) {
+    if (markedStep == null) {
       await chain.append(
-        HistorySummaryAsked(turn: turn, upTo: upTo).toJson(),
+        HistorySummaryAsked(step: turn, upTo: upTo).toJson(),
         const Own(),
       );
     }
@@ -358,8 +358,8 @@ Future<Never> _run(_Options options) async {
               'message without an answer.',
           'notice that its model calls are spent',
         );
-      case SummaryOwed(:final upTo, :final turn):
-        await summarize(upTo, turn);
+      case SummaryOwed(:final upTo, :final step):
+        await summarize(upTo, step);
     }
   }
 

@@ -3,8 +3,9 @@
 /// asks the model to summarize, and later requests send that summary in
 /// place of everything it covers.
 ///
-/// The summary call is a turn of its own: one model call, at
-/// [ProposedForTheModelCall], with no intents and no reply. It sends the
+/// The summary call is a step of its own (one model call and what it
+/// caused, which is_airlock_api still counts as its `turn`): the model call
+/// at [ProposedForTheModelCall], with no intents and no reply. It sends the
 /// same system prompt, tools and input as the answer that crossed the line,
 /// plus that answer's reply and one final user item asking for the
 /// summary, so the provider's cache of that prefix carries over. Its
@@ -22,22 +23,22 @@ import 'package:is_tools_api/is_tools_api.dart' show OneActionTool;
 import 'trajectory_history.dart';
 
 /// The loop's own record, written on its chain just before it proposes the
-/// summary call: [turn]'s model call summarizes [upTo] and every event
+/// summary call: [step]'s model call summarizes [upTo] and every event
 /// before it. Written first, so a loop replaying the logbook tells that
 /// call from an answer whether or not it ever came back, and proposes it
-/// at the same turn if it never went out.
+/// at the same step if it never went out.
 final class HistorySummaryAsked {
-  const HistorySummaryAsked({required this.turn, required this.upTo});
+  const HistorySummaryAsked({required this.step, required this.upTo});
 
   static const shapeName = 'HistorySummaryAsked';
 
-  /// Counted from 0, as [ProposedForTheModelCall.turn] is.
-  final int turn;
+  /// Counted from 0: the number is_airlock_api's places call `turn`.
+  final int step;
   final ObjectId upTo;
 
   Map<String, Object?> toJson() => {
     'shape': shapeName,
-    'turn': turn,
+    'step': step,
     'upTo': upTo.hex,
   };
 
@@ -46,13 +47,13 @@ final class HistorySummaryAsked {
     final json = JsonObject.parse(node);
     // wire-ok: a node's shape name, read once here
     if (json == null || json.raw('shape') != shapeName) return null;
-    final turn = json.raw('turn');
+    final step = json.raw('step');
     final upTo = switch (json.raw('upTo')) {
       final String hex => ObjectId.parse(hex),
       _ => null,
     };
-    return turn is int && turn >= 0 && upTo != null
-        ? HistorySummaryAsked(turn: turn, upTo: upTo)
+    return step is int && step >= 0 && upTo != null
+        ? HistorySummaryAsked(step: step, upTo: upTo)
         : null;
   }
 }
