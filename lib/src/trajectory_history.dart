@@ -34,9 +34,10 @@ import 'package:is_docking_station_api/is_docking_station_api.dart'
         DecisionEntryKind,
         EventAdmittedToMission,
         MessageSaid,
-        ReplyEndpoint,
         StartsTrajectory,
         decodeDecision;
+import 'package:is_conversation_reply_vocabulary/is_conversation_reply_vocabulary.dart'
+    show ReplyEndpoint;
 import 'package:checked_json/checked_json.dart' show JsonObject;
 import 'package:is_flight_rules/is_flight_rules.dart' show FlightRules;
 import 'package:is_logbook_client/is_logbook_client.dart'

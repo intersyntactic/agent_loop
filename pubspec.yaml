@@ -4,7 +4,7 @@ description: >-
   to the logbook (RULINGS), and replies through the airlock with the
   requests a program it is given draws its reply as, knowing no external
   system.
-version: 0.10.0
+version: 0.10.1
 repository: https://github.com/intersyntactic/agent_loop
 publish_to: none
 
@@ -15,7 +15,8 @@ dependencies:
   checked_json: ^0.2.1
   is_content_id: ^0.2.0
   is_conversation_shapes: ^0.8.3
-  is_docking_station_api: ^0.7.0
+  is_conversation_reply_vocabulary: ^0.1.0
+  is_docking_station_api: ^0.8.0
   is_logbook_client: ^0.4.0
   is_shapes: ^0.6.0
   is_airlock_api: ^0.18.1

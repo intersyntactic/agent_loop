@@ -30,7 +30,7 @@ import 'package:is_effects/is_effects.dart'
         encodeExecResult,
         encodeOutcome,
         encodeWebResponse;
-import 'package:is_docking_station_api/is_docking_station_api.dart'
+import 'package:is_conversation_reply_vocabulary/is_conversation_reply_vocabulary.dart'
     show
         RepliesInSlackConversation,
         RepliesUnderWebAddress,
