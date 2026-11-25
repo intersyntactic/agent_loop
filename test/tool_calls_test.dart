@@ -9,19 +9,17 @@ import 'package:checked_json/checked_json.dart' show JsonObject;
 import 'package:is_effects/is_effects.dart'
     show
         BytesBody,
-        CalledToolName,
         NothingRan,
-        Origin,
         Outcome,
         Ran,
-        SignIn,
         StoppedPartway,
         TextBody,
-        ToolCall,
-        ToolCallId,
-        ToolInput,
-        WebPath,
         WebResponse;
+import 'package:is_model_vocabulary/is_model_vocabulary.dart'
+    show CalledToolName, ToolCall, ToolCallId, ToolInput;
+import 'package:is_sign_in_vocabulary/is_sign_in_vocabulary.dart' show SignIn;
+import 'package:is_web_address_vocabulary/is_web_address_vocabulary.dart'
+    show Origin, WebPath;
 import 'package:is_model_vocabulary/is_model_vocabulary.dart'
     show ToolFailed, ToolName, ToolRan, ToolRefused, ToolResult;
 import 'package:is_tools_api/is_tools_api.dart'

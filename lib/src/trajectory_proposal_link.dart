@@ -1,8 +1,9 @@
-/// The loop's own crux link: the one holder that extends the trajectory.
-/// Writes each proposal as an [ActionProposedByAgentLoop] entry on the
-/// trajectory's own chain, and hands back the airlock's
-/// `outcomeOfProposedActionKind` entry naming it; is_airlock_api joins the
-/// two and checks the outcome names the proposal.
+/// The loop's link to the logbook for its proposals: the one holder that
+/// extends the trajectory. Writes each proposal as an
+/// [ActionProposedByAgentLoop] entry on the trajectory's own chain, and
+/// hands back the airlock's `outcomeOfProposedActionKind` entry naming it;
+/// [ProposesAtNextPlace] joins the two and checks the outcome names the
+/// proposal.
 ///
 /// The airlock names a proposal by the [ObjectId] the write's own `ok`
 /// answer gives — the whole recorded entry, not a hash of the proposal's
@@ -15,14 +16,12 @@ import 'dart:convert' show utf8;
 import 'dart:io' show stdout;
 
 import 'package:is_airlock_api/is_airlock_api.dart'
-    show
-        ActionProposedByAgentLoop,
-        PlaceInTrajectory,
-        ProposesActionsThroughTheLogbook;
+    show ActionProposedByAgentLoop, PlaceInTrajectory;
 import 'package:is_logbook_client/is_logbook_client.dart' show Kind;
 import 'package:is_shapes/is_shapes.dart' show EntryId;
 
 import 'loop_exit.dart' show FeedEnded;
+import 'proposes_at_next_place.dart';
 import 'trajectory_chain.dart';
 
 final _proposedKind = Kind.parse(ActionProposedByAgentLoop.kind)!;
@@ -39,8 +38,8 @@ typedef ReturnedResult = ({EntryId proposed, EntryId resultEntry, String body});
 /// Listens to [returned] once, from construction, and keeps every result
 /// until it is asked for: an outcome that arrives between a proposal's
 /// write and the call that waits for it is never lost.
-final class TrajectoryCrux implements ProposesActionsThroughTheLogbook {
-  TrajectoryCrux({
+final class TrajectoryProposalLink implements ProposesActionsThroughTheLogbook {
+  TrajectoryProposalLink({
     required this.chain,
     required Stream<ReturnedResult> returned,
   }) {

@@ -8,17 +8,17 @@ import 'package:is_airlock_api/is_airlock_api.dart'
     show ProposedForAnIntent, ProposedForTheModelCall, ProposedForTheReply;
 import 'package:is_docking_station_api/is_docking_station_api.dart'
     show AddressInExternalSystem;
-import 'package:is_effects/is_effects.dart'
+import 'package:is_model_vocabulary/is_model_vocabulary.dart'
     show
         CalledToolName,
         FinishedReply,
-        Origin,
         ProposedToolCalls,
-        SignIn,
         ToolCall,
         ToolCallId,
-        ToolInput,
-        WebPath;
+        ToolInput;
+import 'package:is_sign_in_vocabulary/is_sign_in_vocabulary.dart' show SignIn;
+import 'package:is_web_address_vocabulary/is_web_address_vocabulary.dart'
+    show Origin, WebPath;
 import 'package:is_logbook_client/is_logbook_client.dart' show ObjectId;
 import 'package:is_model_vocabulary/is_model_vocabulary.dart'
     show

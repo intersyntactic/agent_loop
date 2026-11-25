@@ -8,10 +8,11 @@
 /// can pass no per-trajectory argument), follows its trajectory's history
 /// live (the docking station's admissions and its own turn chain, merged),
 /// and, whenever the turn rule says the agent should answer, records a
-/// model request and proposes [AskTheModel] through its crux, naming it.
+/// model request and proposes [AskTheModel] through the logbook, naming it.
 ///
 /// Each answer is one turn, counted from 0: its model call through
-/// [Crux.forTheModelCall], then its reply through [Crux.forTheReply]. A
+/// [ProposesAtNextPlace.forTheModelCall], then its reply through
+/// [ProposesAtNextPlace.forTheReply]. A
 /// restarted loop's next turn follows the latest place in its history.
 ///
 /// A reply is two actions ([replyActions]): run the program named by
@@ -39,14 +40,12 @@ library;
 import 'dart:io';
 
 import 'package:agent_loop/agent_loop.dart';
-import 'package:is_effects/is_effects.dart'
-    show ModelReply, ModelUsage, ProgramName, ProposedToolCalls;
+import 'package:is_effects/is_effects.dart' show ProgramName;
 import 'package:is_model_vocabulary/is_model_vocabulary.dart'
-    show ModelRequest, ToolName;
+    show ModelReply, ModelRequest, ModelUsage, ProposedToolCalls, ToolName;
 import 'package:is_airlock_api/is_airlock_api.dart'
     show
         Action,
-        Crux,
         Done,
         Executable,
         Failed,
@@ -116,7 +115,10 @@ Future<Never> _run(_Options options) async {
     kind: turnKind,
     root: root,
   );
-  final link = TrajectoryCrux(chain: chain, returned: followResults(reader));
+  final link = TrajectoryProposalLink(
+    chain: chain,
+    returned: followResults(reader),
+  );
 
   final history = <TrajectoryEvent>[];
   var nextTurn = 0;
@@ -156,7 +158,7 @@ Future<Never> _run(_Options options) async {
       return;
     }
     final signIn = started.rules.whatMayLeaveThisMachine.signInForReply(
-      replyEndpoint: address,
+      replyEndpoint: endpoint,
       leasedNow: const {},
       pooled: const {},
     );
@@ -177,7 +179,7 @@ Future<Never> _run(_Options options) async {
         trajectory: started.trajectory,
         turn: turn,
       ),
-      Crux.forTheReply(link, turn: turn),
+      ProposesAtNextPlace.forTheReply(link, turn: turn),
     );
     latestOwn = ProposedForTheReply.at(turn, 0);
     switch (sent) {
@@ -227,7 +229,7 @@ Future<Never> _run(_Options options) async {
       then: (ModelReply reply) => Done(reply),
     );
     final Result<ModelReply> outcome = await asked.next(
-      Crux.forTheModelCall(link, turn: turn),
+      ProposesAtNextPlace.forTheModelCall(link, turn: turn),
     );
     switch (outcome) {
       case Done(:final value):
@@ -257,7 +259,7 @@ Future<Never> _run(_Options options) async {
     latestOwn = place;
     stdout.writeln('agent_loop: running tool ${tool.name} at $place');
     await toolAction(tool)
-        .next(Crux.forIntent(link, turn: turn, intent: intent));
+        .next(ProposesAtNextPlace.forIntent(link, turn: turn, intent: intent));
   }
 
   // Does whatever the history owes now, if anything.

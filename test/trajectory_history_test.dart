@@ -12,7 +12,6 @@ import 'package:agent_loop/agent_loop.dart';
 import 'package:is_airlock_api/is_airlock_api.dart'
     show
         ActionProposedByAgentLoop,
-        Crux,
         Done,
         ModelCall,
         ProposedForTheModelCall,
@@ -21,26 +20,23 @@ import 'package:is_airlock_api/is_airlock_api.dart'
         outcomeOfProposedActionToJson;
 import 'package:is_effects/is_effects.dart'
     show
-        AddressPrefix,
-        CutOffReply,
-        FinishedReply,
         ModelAndSignIn,
         ModelName,
-        ModelReply,
         ModelSignInName,
-        Origin,
         Outcome,
-        PathPrefix,
         NothingRan,
         Ran,
-        SignIn,
         StoppedPartway,
         TextBody,
-        WebPath,
         WebResponse,
         encodeModelReply,
         encodeOutcome,
         encodeWebResponse;
+import 'package:is_model_vocabulary/is_model_vocabulary.dart'
+    show CutOffReply, FinishedReply, ModelReply;
+import 'package:is_sign_in_vocabulary/is_sign_in_vocabulary.dart' show SignIn;
+import 'package:is_web_address_vocabulary/is_web_address_vocabulary.dart'
+    show AddressPrefix, Origin, PathPrefix, WebPath;
 import 'package:is_conversation_shapes/is_conversation_shapes.dart'
     show SourceMessageId, UserSaid;
 import 'package:is_model_vocabulary/is_model_vocabulary.dart'
@@ -342,10 +338,13 @@ void main() {
       tip: root,
     );
 
-    // Each call is proposed through the loop's real crux; the airlock's
-    // answer is written as it would write it, then handed back to the crux.
+    // Each call is proposed through the loop's real link; the airlock's
+    // answer is written as it would write it, then handed back to the link.
     final returned = StreamController<ReturnedResult>();
-    final link = TrajectoryCrux(chain: chain, returned: returned.stream);
+    final link = TrajectoryProposalLink(
+      chain: chain,
+      returned: returned.stream,
+    );
     final outcomeKind = Kind.parse(outcomeOfProposedActionKind)!;
     Future<client.ObjectId> answer(
       int turn,
@@ -360,7 +359,9 @@ void main() {
         then: (ModelReply reply) => Done(reply),
       );
       final before = chain.tip;
-      final done = asked.next(Crux.forTheModelCall(link, turn: turn));
+      final done = asked.next(
+        ProposesAtNextPlace.forTheModelCall(link, turn: turn),
+      );
       while (chain.tip == before) {
         await Future<void>.delayed(const Duration(milliseconds: 10));
       }
@@ -475,7 +476,10 @@ void main() {
       tip: root,
     );
     final returned = StreamController<ReturnedResult>();
-    final link = TrajectoryCrux(chain: chain, returned: returned.stream);
+    final link = TrajectoryProposalLink(
+      chain: chain,
+      returned: returned.stream,
+    );
     final outcomeKind = Kind.parse(outcomeOfProposedActionKind)!;
     final tool = OneActionTool.of(
       name: ToolName.of('list_documents'),
@@ -492,7 +496,7 @@ void main() {
     Future<String> run(int turn, Outcome<WebResponse> outcome) async {
       final before = chain.tip;
       final done = toolAction(tool)
-          .next(Crux.forIntent(link, turn: turn, intent: 0));
+          .next(ProposesAtNextPlace.forIntent(link, turn: turn, intent: 0));
       while (chain.tip == before) {
         await Future<void>.delayed(const Duration(milliseconds: 10));
       }

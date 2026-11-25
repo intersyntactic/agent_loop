@@ -25,6 +25,7 @@ import 'package:is_airlock_api/is_airlock_api.dart'
         ProposedForTheReply,
         ReadFile,
         ReadFileBytes,
+        ReplyToOwnConversation,
         WriteFile,
         outcomeOfProposedActionKind,
         readOutcomeOfProposedAction;
@@ -42,18 +43,15 @@ import 'package:checked_json/checked_json.dart' show JsonObject;
 import 'package:is_flight_rules/is_flight_rules.dart' show FlightRules;
 import 'package:is_logbook_client/is_logbook_client.dart'
     show CaughtUp, Entry, Kind, LogbookReader, ObjectId;
+import 'package:is_model_vocabulary/is_model_vocabulary.dart'
+    show CutOffReply, FinishedReply, ModelReply, ProposedToolCalls, ToolCall;
 import 'package:is_effects/is_effects.dart'
     show
-        CutOffReply,
-        FinishedReply,
         ModelAndSignIn,
-        ModelReply,
         NothingRan,
         Outcome,
-        ProposedToolCalls,
         Ran,
         StoppedPartway,
-        ToolCall,
         WebResponse,
         decodeModelReply,
         decodeOutcome,
@@ -274,7 +272,8 @@ Stream<TrajectoryFeedItem> followTrajectoryHistory(
           ReadFileBytes() ||
           WriteFile() ||
           Executable() ||
-          MakeWebRequests() => ProposedProgram.other,
+          MakeWebRequests() ||
+          ReplyToOwnConversation() => ProposedProgram.other,
         };
         switch (proposed) {
           case ProposedProgram.askTheModel:

@@ -1,4 +1,4 @@
-/// The feed of [ReturnedResult]s a [TrajectoryCrux] waits on: every
+/// The feed of [ReturnedResult]s a [TrajectoryProposalLink] waits on: every
 /// [outcomeOfProposedActionKind] entry loop_launcher's own feed hands
 /// this loop, read once.
 ///
@@ -15,7 +15,7 @@ import 'package:is_logbook_client/is_logbook_client.dart'
     show Entry, Kind, LogbookReader;
 import 'package:is_shapes/is_shapes.dart' show EntryId;
 
-import 'trajectory_crux.dart';
+import 'trajectory_proposal_link.dart';
 
 final _resultKind = Kind.parse(outcomeOfProposedActionKind)!;
 
