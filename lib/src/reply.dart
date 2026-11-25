@@ -22,7 +22,7 @@ import 'package:is_effects/is_effects.dart'
         SignIn,
         decodeProposedRequest,
         encodeAddressPrefix;
-import 'package:is_docking_station_api/is_docking_station_api.dart'
+import 'package:is_conversation_reply_vocabulary/is_conversation_reply_vocabulary.dart'
     show RepliesInSlackConversation, RepliesUnderWebAddress, ReplyEndpoint;
 import 'package:is_shapes/is_shapes.dart' show TrajectoryId;
 
