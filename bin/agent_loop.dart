@@ -158,7 +158,7 @@ Future<Never> _run(_Options options) async {
       return;
     }
     final signIn = started.rules.whatMayLeaveThisMachine.signInForReply(
-      replyEndpoint: address,
+      replyEndpoint: endpoint,
       leasedNow: const {},
       pooled: const {},
     );
