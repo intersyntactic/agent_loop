@@ -4,7 +4,7 @@ description: >-
   to the logbook (RULINGS), and replies through the airlock with the
   requests a program it is given draws its reply as, knowing no external
   system.
-version: 0.9.1
+version: 0.10.0
 repository: https://github.com/intersyntactic/agent_loop
 publish_to: none
 
