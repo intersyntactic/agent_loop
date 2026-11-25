@@ -18,11 +18,16 @@ dependencies:
   is_docking_station_api: ^0.7.0
   is_logbook_client: ^0.4.0
   is_shapes: ^0.6.0
-  is_airlock_api: ^0.18.1
-  is_effects: ^0.15.0
+  is_airlock_api:
+    git:
+      url: https://github.com/intersyntactic/airlock_api
+      ref: 20c7558ff7929a51aa9bf2f6b7b83d2c2c157595
+  is_effects: ^0.17.0
   is_flight_rules: ^0.7.0
   is_model_vocabulary: ^0.2.0
+  is_sign_in_vocabulary: ^0.1.0
   is_tools_api: ^0.5.0
+  is_web_address_vocabulary: ^0.1.2
 
 dev_dependencies:
   # Tests start a real LogbookService; nothing outside test/ may import it.

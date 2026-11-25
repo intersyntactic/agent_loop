@@ -1,4 +1,4 @@
-// Proves TrajectoryCrux against a real LogbookService for the write side
+// Proves TrajectoryProposalLink against a real LogbookService for the write side
 // (the action-proposed-by-agent-loop entry it writes, named by the id the
 // logbook gave it), and a fake `returned` stream for the read side,
 // matched by that id, never a hash of the proposal's body alone.
@@ -36,7 +36,7 @@ void main() {
   final proposedKind = Kind.parse('action-proposed-by-agent-loop')!;
 
   setUp(() async {
-    tmp = Directory.systemTemp.createTempSync('agent_loop_crux_test_');
+    tmp = Directory.systemTemp.createTempSync('agent_loop_proposal_link_test_');
     final uid = Process.runSync('id', ['-u']).stdout.toString().trim();
     final senderTable = SenderTable.parse(
       Uint8List.fromList('$uid turn action-proposed-by-agent-loop\n'.codeUnits),
@@ -66,7 +66,7 @@ void main() {
   test('writes the proposal on the chain and gives the id the logbook gave '
       'it; hands back the body of the outcome naming that id', () async {
     final returned = StreamController<ReturnedResult>();
-    final crux = TrajectoryCrux(
+    final link = TrajectoryProposalLink(
       chain: chainFromRoot(),
       returned: returned.stream,
     );
@@ -75,14 +75,14 @@ void main() {
         .subscribe(kinds: {proposedKind})
         .firstWhere((item) => item is Entry);
     final body = _proposal(1);
-    final id = await crux.writeProposal(body);
+    final id = await link.writeProposal(body);
     final entry = await writtenEntry as Entry;
 
     expect(id, EntryId.parse(entry.id.hex));
     expect(entry.previous, root);
     expect(utf8.decode(entry.body), body);
 
-    final outcome = crux.outcomeNaming(id);
+    final outcome = link.outcomeNaming(id);
     // A result for some other proposal is passed over.
     returned.add((
       proposed: EntryId.of(utf8.encode('another proposal')),
@@ -94,21 +94,21 @@ void main() {
 
     expect(await outcome, 'this one');
     // Its result entry is reachable by the proposal's place, once.
-    expect(crux.resultEntryAt(ProposedForTheModelCall.at(1)), resultEntry);
-    expect(crux.resultEntryAt(ProposedForTheModelCall.at(1)), isNull);
+    expect(link.resultEntryAt(ProposedForTheModelCall.at(1)), resultEntry);
+    expect(link.resultEntryAt(ProposedForTheModelCall.at(1)), isNull);
 
-    await crux.close();
+    await link.close();
     await returned.close();
   });
 
   test('an outcome that arrives before it is asked for is kept', () async {
     final returned = StreamController<ReturnedResult>.broadcast();
-    final crux = TrajectoryCrux(
+    final link = TrajectoryProposalLink(
       chain: chainFromRoot(),
       returned: returned.stream,
     );
 
-    final id = await crux.writeProposal(_proposal(2));
+    final id = await link.writeProposal(_proposal(2));
     returned.add((
       proposed: id,
       resultEntry: EntryId.of(utf8.encode('early-result-entry')),
@@ -116,50 +116,50 @@ void main() {
     ));
     await Future<void>.delayed(Duration.zero);
 
-    expect(await crux.outcomeNaming(id), 'early');
+    expect(await link.outcomeNaming(id), 'early');
     expect(
-      crux.resultEntryAt(ProposedForTheModelCall.at(2)),
+      link.resultEntryAt(ProposedForTheModelCall.at(2)),
       EntryId.of(utf8.encode('early-result-entry')),
     );
 
-    await crux.close();
+    await link.close();
     await returned.close();
   });
 
   test('a read failure on the results fails the outcome awaited, any asked '
       'for later, and ended', () async {
     final returned = StreamController<ReturnedResult>();
-    final crux = TrajectoryCrux(
+    final link = TrajectoryProposalLink(
       chain: chainFromRoot(),
       returned: returned.stream,
     );
 
-    final first = await crux.writeProposal(_proposal(3));
-    final awaited = crux.outcomeNaming(first);
+    final first = await link.writeProposal(_proposal(3));
+    final awaited = link.outcomeNaming(first);
     returned.addError(const ReadUnreachable('socket: gone'));
 
     await expectLater(awaited, throwsA(isA<ReadUnreachable>()));
-    final second = await crux.writeProposal(_proposal(4));
+    final second = await link.writeProposal(_proposal(4));
     await expectLater(
-      crux.outcomeNaming(second),
+      link.outcomeNaming(second),
       throwsA(isA<ReadUnreachable>()),
     );
-    await expectLater(crux.ended, throwsA(isA<ReadUnreachable>()));
+    await expectLater(link.ended, throwsA(isA<ReadUnreachable>()));
     await returned.close();
   });
 
   test('results that simply end fail ended with FeedEnded, and an outcome '
       'asked for after never hangs', () async {
     final returned = StreamController<ReturnedResult>();
-    final crux = TrajectoryCrux(
+    final link = TrajectoryProposalLink(
       chain: chainFromRoot(),
       returned: returned.stream,
     );
 
     await returned.close();
 
-    await expectLater(crux.ended, throwsA(isA<FeedEnded>()));
-    final id = await crux.writeProposal(_proposal(5));
-    await expectLater(crux.outcomeNaming(id), throwsA(isA<FeedEnded>()));
+    await expectLater(link.ended, throwsA(isA<FeedEnded>()));
+    final id = await link.writeProposal(_proposal(5));
+    await expectLater(link.outcomeNaming(id), throwsA(isA<FeedEnded>()));
   });
 }

@@ -1,5 +1,5 @@
 /// A reply to the person who started a trajectory, as two actions through
-/// one [Crux.forTheReply]: run the program that draws it as its surface's
+/// one [ProposesAtNextPlace.forTheReply]: run the program that draws it as its surface's
 /// requests, such as teams_module's `teams-reply-drawing`, then send
 /// exactly the requests it printed.
 /// The loop never builds a request itself, and the airlock decides where
@@ -9,22 +9,22 @@ library;
 import 'dart:convert' show jsonDecode, jsonEncode;
 
 import 'package:is_airlock_api/is_airlock_api.dart'
-    show Action, Crux, Done, Executable, Failed, Program, Result;
+    show Action, Done, Executable, Failed, Program, ProposesActions, Result;
 import 'package:is_effects/is_effects.dart'
     show
-        AddressPrefix,
         Args,
         ExecResult,
         Exited,
         Killed,
-        ModelUsage,
         ProposedRequest,
-        SignIn,
-        decodeProposedRequest,
-        encodeAddressPrefix;
+        decodeProposedRequest;
 import 'package:is_docking_station_api/is_docking_station_api.dart'
     show RepliesInSlackConversation, RepliesUnderWebAddress, ReplyEndpoint;
+import 'package:is_model_vocabulary/is_model_vocabulary.dart' show ModelUsage;
 import 'package:is_shapes/is_shapes.dart' show TrajectoryId;
+import 'package:is_sign_in_vocabulary/is_sign_in_vocabulary.dart' show SignIn;
+import 'package:is_web_address_vocabulary/is_web_address_vocabulary.dart'
+    show AddressPrefix, encodeAddressPrefix;
 
 /// The web address a reply to [endpoint] is sent under, or null when the
 /// loop can't send to it: a Slack conversation is named in a reply's body,
@@ -120,15 +120,17 @@ Args drawingArgs({
   }
 }
 
-/// [result] carried on through [crux] until it is no longer an [Action]:
-/// each action a continuation leads to is proposed at the crux's next
-/// place.
-Future<Result<A>> runToEnd<A>(Result<A> result, Crux crux) async {
+/// [result] carried on through [proposer] until it is no longer an
+/// [Action]: each action a continuation leads to is proposed in turn.
+Future<Result<A>> runToEnd<A>(
+  Result<A> result,
+  ProposesActions proposer,
+) async {
   var current = result;
   while (true) {
     switch (current) {
       case Action<A>():
-        current = await current.next(crux);
+        current = await current.next(proposer);
       case Done<A>() || Failed():
         return current;
     }

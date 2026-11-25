@@ -1,6 +1,6 @@
 /// Each trajectory's own agent loop: it writes the conversation's turns
-/// straight to the logbook and proposes each model call through its crux;
-/// the airlock makes the call.
+/// straight to the logbook and proposes each model call through it as a
+/// [ProposesAtNextPlace]; the airlock makes the call.
 ///
 /// [TrajectoryChain] is one trajectory's sequence of turns, written to the
 /// logbook (the live logbook service, `is_logbook`), each in a
@@ -23,12 +23,13 @@ library;
 export 'src/logbook_writer.dart';
 export 'src/loop_exit.dart';
 export 'src/model_request_input.dart';
+export 'src/proposes_at_next_place.dart';
 export 'src/reply.dart';
 export 'src/tool_action.dart';
 export 'src/tool_calls.dart';
 export 'src/trajectory_chain.dart';
-export 'src/trajectory_crux.dart';
 export 'src/trajectory_history.dart';
-export 'src/trajectory_results.dart';
 export 'src/trajectory_model_request.dart';
+export 'src/trajectory_proposal_link.dart';
+export 'src/trajectory_results.dart';
 export 'src/turn_envelope.dart';

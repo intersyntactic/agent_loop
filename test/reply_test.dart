@@ -7,29 +7,26 @@ import 'package:agent_loop/agent_loop.dart';
 import 'package:is_airlock_api/is_airlock_api.dart'
     show
         ActionProposedByAgentLoop,
-        Crux,
         Done,
         Executable,
         Failed,
         ProposedForTheReply,
-        ProposesActionsThroughTheLogbook,
         outcomeOfProposedActionToJson;
 import 'package:is_effects/is_effects.dart'
     show
-        AddressPrefix,
         ExecResult,
         Exited,
-        ModelUsage,
-        Origin,
-        PathPrefix,
         ProgramName,
         Ran,
         NothingRan,
-        SignIn,
         WebResponse,
         encodeExecResult,
         encodeOutcome,
         encodeWebResponse;
+import 'package:is_model_vocabulary/is_model_vocabulary.dart' show ModelUsage;
+import 'package:is_sign_in_vocabulary/is_sign_in_vocabulary.dart' show SignIn;
+import 'package:is_web_address_vocabulary/is_web_address_vocabulary.dart'
+    show AddressPrefix, Origin, PathPrefix;
 import 'package:is_docking_station_api/is_docking_station_api.dart'
     show
         RepliesInSlackConversation,
@@ -189,7 +186,7 @@ void main() {
           trajectory: _trajectory,
           turn: 4,
         ),
-        Crux.forTheReply(link, turn: 4),
+        ProposesAtNextPlace.forTheReply(link, turn: 4),
       );
 
       expect(result, isA<Done<int>>().having((d) => d.value, 'sent', 1));
@@ -215,7 +212,7 @@ void main() {
           trajectory: _trajectory,
           turn: 1,
         ),
-        Crux.forTheReply(link, turn: 1),
+        ProposesAtNextPlace.forTheReply(link, turn: 1),
       );
 
       expect(
@@ -244,7 +241,7 @@ void main() {
           trajectory: _trajectory,
           turn: 2,
         ),
-        Crux.forTheReply(link, turn: 2),
+        ProposesAtNextPlace.forTheReply(link, turn: 2),
       );
 
       expect(
