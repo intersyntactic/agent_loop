@@ -21,7 +21,7 @@ dependencies:
   is_airlock_api:
     git:
       url: https://github.com/intersyntactic/airlock_api
-      ref: 20c7558ff7929a51aa9bf2f6b7b83d2c2c157595
+      ref: 3d2756c150c7e507d94cfd26769ec1d5a9ca0609
   is_effects: ^0.17.0
   is_flight_rules: ^0.7.0
   is_model_vocabulary: ^0.2.0
