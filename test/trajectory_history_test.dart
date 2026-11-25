@@ -42,6 +42,8 @@ import 'package:is_conversation_shapes/is_conversation_shapes.dart'
 import 'package:is_model_vocabulary/is_model_vocabulary.dart'
     show ToolFailed, ToolName, ToolRan, ToolRefused;
 import 'package:checked_json/checked_json.dart' show JsonObject;
+import 'package:is_conversation_reply_vocabulary/is_conversation_reply_vocabulary.dart'
+    show RepliesUnderWebAddress;
 import 'package:is_docking_station_api/is_docking_station_api.dart';
 import 'package:is_flight_rules/is_flight_rules.dart'
     show FlightRules, ProgramsNetwork, WhatMayLeaveThisMachine;

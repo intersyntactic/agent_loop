@@ -18,7 +18,7 @@ import 'package:is_effects/is_effects.dart'
         Killed,
         ProposedRequest,
         decodeProposedRequest;
-import 'package:is_docking_station_api/is_docking_station_api.dart'
+import 'package:is_conversation_reply_vocabulary/is_conversation_reply_vocabulary.dart'
     show RepliesInSlackConversation, RepliesUnderWebAddress, ReplyEndpoint;
 import 'package:is_model_vocabulary/is_model_vocabulary.dart' show ModelUsage;
 import 'package:is_shapes/is_shapes.dart' show TrajectoryId;
