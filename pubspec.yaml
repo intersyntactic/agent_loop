@@ -16,11 +16,7 @@ dependencies:
   is_content_id: ^0.2.0
   is_conversation_shapes: ^0.8.3
   is_conversation_reply_vocabulary: ^0.1.0
-  is_docking_station_api:
-    git:
-      url: https://github.com/intersyntactic/docking_station
-      ref: 8498d0e65c380d27a84585743ba46737246816cf
-      path: docking_station_api
+  is_docking_station_api: ^0.8.0
   is_logbook_client: ^0.4.0
   is_shapes: ^0.6.0
   is_airlock_api: ^0.21.0
