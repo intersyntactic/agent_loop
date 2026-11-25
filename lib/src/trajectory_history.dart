@@ -8,6 +8,11 @@
 /// A prior agent reply is read from the airlock's outcome of the model call
 /// that produced it ([SaidByAgent]), never from a turn: a loop writes no
 /// reply turn of its own.
+///
+/// A summary call (lib/src/history_compaction.dart) is a turn of its own:
+/// its [HistorySummaryAsked] marker arrives as [SummaryAsked], its proposal
+/// as an [ActionProposed] for [ProposedProgram.askTheModelForASummary], and
+/// its reply as a [SummaryByAgent], never a [SaidByAgent].
 library;
 
 import 'dart:async';
@@ -22,6 +27,7 @@ import 'package:is_airlock_api/is_airlock_api.dart'
         MakeWebRequests,
         PlaceInTrajectory,
         ProposedForAnIntent,
+        ProposedForTheModelCall,
         ProposedForTheReply,
         ReadFile,
         ReadFileBytes,
@@ -68,6 +74,8 @@ import 'package:is_model_vocabulary/is_model_vocabulary.dart'
 import 'package:is_shapes/is_shapes.dart' show ActorId, EntryId, TrajectoryId;
 import 'package:is_tools_api/is_tools_api.dart' show OneActionTool;
 
+import 'history_compaction.dart'
+    show HistorySummaryAsked, replyOverTheLine, requestWindow;
 import 'model_request_input.dart' show inputTurnOf;
 import 'tool_calls.dart';
 import 'turn_envelope.dart';
@@ -158,8 +166,38 @@ final class FetchEnded extends TrajectoryEvent {
   final ToolResult result;
 }
 
-/// The program a proposal runs, as far as the loop tells them apart.
-enum ProposedProgram { askTheModel, fetchFromWeb, other }
+/// The summary the model gave in a summary call, [proposed], which a
+/// [SummaryAsked] marked first: [hash] is the airlock's outcome entry for
+/// it, and [upTo] the last event it covers. Never part of the conversation
+/// itself; what a request shows of it is [requestWindow]'s to decide.
+final class SummaryByAgent extends TrajectoryEvent {
+  const SummaryByAgent({
+    required super.hash,
+    required this.proposed,
+    required this.reply,
+    required this.upTo,
+  });
+
+  final ObjectId proposed;
+  final ModelReply reply;
+  final ObjectId upTo;
+}
+
+/// A [HistorySummaryAsked] marker, read back off the loop's own chain.
+final class SummaryAsked extends TrajectoryEvent {
+  const SummaryAsked({required super.hash, required this.asked});
+
+  final HistorySummaryAsked asked;
+}
+
+/// The program a proposal runs, as far as the loop tells them apart: a
+/// model call is either answering the conversation or summarizing it.
+enum ProposedProgram {
+  askTheModel,
+  askTheModelForASummary,
+  fetchFromWeb,
+  other,
+}
 
 /// An action this loop proposed: [place] is the place it named, and
 /// [program] what it runs. A replayed history needs both: whether a message
@@ -232,9 +270,9 @@ final _outcomeKind = Kind.parse(outcomeOfProposedActionKind)!;
 ///
 /// The loop's own proposals arrive too, each as an [ActionProposed], and
 /// the airlock's outcome of each: an outcome answering a proposal that
-/// asked the model, if the model ran, becomes a [SaidByAgent]. Every other
-/// outcome (a refused call, a web request) is skipped. A proposal the
-/// airlock could not read as one is skipped too.
+/// asked the model, if the model ran, becomes a [SaidByAgent], or a
+/// [SummaryByAgent] when a [HistorySummaryAsked] marker named its turn
+/// first. A proposal the airlock could not read as one is skipped.
 ///
 /// Built with [Stream.expand] rather than `async*`, for the same reason as
 /// [followTrajectory]: `expand` passes a cancel straight through to
@@ -245,8 +283,12 @@ Stream<TrajectoryFeedItem> followTrajectoryHistory(
   required ObjectId chainRoot,
 }) {
   final onChain = <ObjectId>{chainRoot};
-  final modelCalls = <EntryId>{};
+  // Each model call proposed, to the last event it summarizes; null for an
+  // answer.
+  final modelCalls = <EntryId, ObjectId?>{};
   final fetches = <EntryId>{};
+  // Each summary marker's turn, to the last event it summarizes.
+  final summariesAsked = <int, ObjectId>{};
   final kinds = {
     turnKind,
     DecisionEntryKind.eventAdmittedToMission,
@@ -262,10 +304,18 @@ Stream<TrajectoryFeedItem> followTrajectoryHistory(
         entry = item;
     }
     if (entry.kind == _proposedKind) {
+      // A proposal is written on the loop's own chain, so a turn written
+      // after it, such as a summary marker, follows it.
+      onChain.add(entry.id);
       if (ActionProposedByAgentLoop.read(_text(entry.body))
           case ActionProposedByAgentLoop(:final place, :final program)) {
         final id = EntryId.parse(entry.id.hex)!;
+        final upTo = place is ProposedForTheModelCall
+            ? summariesAsked[place.turn]
+            : null;
         final proposed = switch (program) {
+          AskTheModel() when upTo != null =>
+            ProposedProgram.askTheModelForASummary,
           AskTheModel() => ProposedProgram.askTheModel,
           FetchFromWeb() => ProposedProgram.fetchFromWeb,
           ReadFile() ||
@@ -276,8 +326,9 @@ Stream<TrajectoryFeedItem> followTrajectoryHistory(
           ReplyToOwnConversation() => ProposedProgram.other,
         };
         switch (proposed) {
-          case ProposedProgram.askTheModel:
-            modelCalls.add(id);
+          case ProposedProgram.askTheModel ||
+              ProposedProgram.askTheModelForASummary:
+            modelCalls[id] = upTo;
           case ProposedProgram.fetchFromWeb:
             fetches.add(id);
           case ProposedProgram.other:
@@ -297,10 +348,18 @@ Stream<TrajectoryFeedItem> followTrajectoryHistory(
       }
       return switch (_modelCallEndIn(entry.body, modelCalls)) {
         null => const [],
-        (:final proposed, reply: final reply?) => [
+        (:final proposed, reply: final reply?, upTo: null) => [
           SaidByAgent(hash: entry.id, proposed: proposed, reply: reply),
         ],
-        (:final proposed, reply: null) => [
+        (:final proposed, reply: final reply?, :final upTo?) => [
+          SummaryByAgent(
+            hash: entry.id,
+            proposed: proposed,
+            reply: reply,
+            upTo: upTo,
+          ),
+        ],
+        (:final proposed, reply: null, upTo: _) => [
           ModelCallRefused(hash: entry.id, proposed: proposed),
         ],
       };
@@ -310,9 +369,12 @@ Stream<TrajectoryFeedItem> followTrajectoryHistory(
           entry.previous != null && onChain.contains(entry.previous);
       if (!belongs) return const [];
       onChain.add(entry.id);
-      return [
-        TurnOnChain(hash: entry.id, turn: TurnEnvelope.decode(entry.body)),
-      ];
+      final turn = TurnEnvelope.decode(entry.body);
+      if (HistorySummaryAsked.fromJson(turn.node) case final asked?) {
+        summariesAsked[asked.turn] = asked.upTo;
+        return [SummaryAsked(hash: entry.id, asked: asked)];
+      }
+      return [TurnOnChain(hash: entry.id, turn: turn)];
     }
     final decision = decodeDecision(entry.kind, entry.body);
     if (decision is! EventAdmittedToMission) return const [];
@@ -361,16 +423,20 @@ TrajectoryEvent _startedUnder(
 }
 
 /// The end of one of [modelCalls] in [body], an outcome entry's: the call
-/// it answers, and the model's reply, or null when the model did not run.
-/// Null for an outcome of anything else. An outcome whose result does not
-/// decode ends its call too, with no reply.
-({ObjectId proposed, ModelReply? reply})? _modelCallEndIn(
+/// it answers, the model's reply, or null when the model did not run, and
+/// the last event the call summarizes, null for an answer. Null for an
+/// outcome of anything else. An outcome whose result does not decode ends
+/// its call too, with no reply.
+({ObjectId proposed, ModelReply? reply, ObjectId? upTo})? _modelCallEndIn(
   List<int> body,
-  Set<EntryId> modelCalls,
+  Map<EntryId, ObjectId?> modelCalls,
 ) {
   final outcome = readOutcomeOfProposedAction(_text(body));
-  if (outcome == null || !modelCalls.contains(outcome.proposed)) return null;
+  if (outcome == null || !modelCalls.containsKey(outcome.proposed)) {
+    return null;
+  }
   final proposed = ObjectId.parse(outcome.proposed.hex)!;
+  final upTo = modelCalls[outcome.proposed];
   try {
     return (
       proposed: proposed,
@@ -378,9 +444,10 @@ TrajectoryEvent _startedUnder(
         Ran(:final output) => output,
         NothingRan() || StoppedPartway() => null,
       },
+      upTo: upTo,
     );
   } on FormatException {
-    return (proposed: proposed, reply: null);
+    return (proposed: proposed, reply: null, upTo: upTo);
   }
 }
 
@@ -413,7 +480,9 @@ Outcome<WebResponse>? _decodedFetch(Object? result) {
 String _text(List<int> body) => utf8.decode(body, allowMalformed: true);
 
 /// [history], oldest first, as a model request's turns: one per message
-/// and reply. A reply goes where the call it answers was proposed, not
+/// and reply. A [SummaryByAgent] is a user turn standing in for what it
+/// covers, so pass a [requestWindow], never a whole history once a summary
+/// exists. A reply goes where the call it answers was proposed, not
 /// where its outcome arrived, so a message admitted while the model was
 /// answering comes after that answer, as the model saw it.
 /// [TurnOnChain] goes through [inputTurnOf]'s own node-shape cases; since
@@ -463,16 +532,24 @@ List<ModelTurn> trajectoryInput(
                 ],
             },
         ],
+        SummaryByAgent(:final reply) => [
+          UserSaid('$_summaryLead${reply.text}'),
+        ],
         TurnOnChain(:final turn) => [inputTurnOf(turn)],
         ActionProposed() ||
         SaidByAgent() ||
         ModelCallRefused() ||
         FetchEnded() ||
+        SummaryAsked() ||
         TrajectoryStarted() ||
         TrajectoryRulesUnreadable() => const [],
       },
   ];
 }
+
+/// Leads a summary's text, so the model reads it as its own earlier notes
+/// rather than something the user just said.
+const _summaryLead = 'Your summary of this conversation before this point:\n\n';
 
 /// What the model hears about [call], the [index]th call of [turn]'s reply,
 /// read against [tools]: why it can't run, its fetch's result once ended,
@@ -538,6 +615,8 @@ const _cutOffNote = '(This reply was cut off before it finished.)';
           SaidByAgent() ||
           ModelCallRefused() ||
           FetchEnded() ||
+          SummaryByAgent() ||
+          SummaryAsked() ||
           ActionProposed() ||
           TurnOnChain():
         continue;
@@ -562,6 +641,8 @@ SaidByUser? unansweredTurn(List<TrajectoryEvent> history) {
           SaidByAgent() ||
           ModelCallRefused() ||
           FetchEnded() ||
+          SummaryByAgent() ||
+          SummaryAsked() ||
           ActionProposed() ||
           TurnOnChain() ||
           TrajectoryStarted() ||
@@ -576,7 +657,10 @@ SaidByUser? unansweredTurn(List<TrajectoryEvent> history) {
 /// a proposal or a turn. A restarted loop's chain resumes after it.
 ObjectId? lastOwnEntry(List<TrajectoryEvent> history) => [
   for (final event in history)
-    if (event is ActionProposed || event is TurnOnChain) event.hash,
+    if (event is ActionProposed ||
+        event is TurnOnChain ||
+        event is SummaryAsked)
+      event.hash,
 ].lastOrNull;
 
 /// Whether every model call and fetch this loop has proposed has ended in
@@ -591,7 +675,9 @@ bool actionsSettled(
   final awaited = [
     for (final event in history)
       if (event case ActionProposed(
-        program: ProposedProgram.askTheModel || ProposedProgram.fetchFromWeb,
+        program: ProposedProgram.askTheModel ||
+            ProposedProgram.askTheModelForASummary ||
+            ProposedProgram.fetchFromWeb,
       ))
         event,
   ];
@@ -599,6 +685,7 @@ bool actionsSettled(
     for (final event in history)
       if (event
           case SaidByAgent(:final proposed) ||
+              SummaryByAgent(:final proposed) ||
               ModelCallRefused(:final proposed) ||
               FetchEnded(:final proposed))
         proposed,
@@ -621,12 +708,46 @@ const maxModelCallsPerMessage = 8;
 /// even when a message arrived meanwhile. Then a message still unanswered
 /// is owed a model call, and so are the calls' results, until the message
 /// has caused [maxModelCallsPerMessage] calls.
+///
+/// With a [compactMargin], a summary is owed too: first one whose
+/// [SummaryAsked] marker was written but whose call never went out, at the
+/// marker's turn; otherwise, when nothing else is owed, one up to a final
+/// reply that left less than [compactMargin] tokens of the context window
+/// ([replyOverTheLine]). Never in the middle of a tool loop, so a summary's
+/// boundary never parts a reply's tool calls from their results.
 StepOwed? stepOwed(
   List<TrajectoryEvent> history, {
   required Map<ToolName, OneActionTool> tools,
   required PlaceInTrajectory? latestOwn,
+  int? compactMargin,
 }) {
   if (!actionsSettled(history, latestOwn: latestOwn)) return null;
+  if (compactMargin == null) return _conversationStepOwed(history, tools);
+  if (_summaryNeverProposed(history) case final asked?) {
+    return SummaryOwed(upTo: asked.upTo, turn: asked.turn);
+  }
+  if (_conversationStepOwed(history, tools) case final owed?) return owed;
+  return switch (replyOverTheLine(history, compactMargin)) {
+    final over? => SummaryOwed(upTo: over.hash, turn: null),
+    null => null,
+  };
+}
+
+/// The latest [HistorySummaryAsked] marker in [history] whose turn has no
+/// model call proposed: the loop wrote it, then stopped before proposing.
+HistorySummaryAsked? _summaryNeverProposed(List<TrajectoryEvent> history) {
+  final asked = history.whereType<SummaryAsked>().lastOrNull?.asked;
+  if (asked == null) return null;
+  final place = ProposedForTheModelCall.at(asked.turn);
+  final proposed = history.any((e) => e is ActionProposed && e.place == place);
+  return proposed ? null : asked;
+}
+
+/// What [stepOwed] says is owed to the conversation itself, once settled.
+StepOwed? _conversationStepOwed(
+  List<TrajectoryEvent> history,
+  Map<ToolName, OneActionTool> tools,
+) {
   final call = history
       .whereType<ActionProposed>()
       .where((e) => e.asksTheModel)
@@ -701,6 +822,16 @@ final class ModelCallsSpent extends StepOwed {
   const ModelCallsSpent({required this.turn});
 
   final int turn;
+}
+
+/// Ask the model to summarize the conversation up to and including the
+/// event [upTo], as a turn of its own: at [turn] when its marker is
+/// already written, otherwise at the loop's next turn, marking it first.
+final class SummaryOwed extends StepOwed {
+  const SummaryOwed({required this.upTo, required this.turn});
+
+  final ObjectId upTo;
+  final int? turn;
 }
 
 /// The latest place this loop has proposed at in [history], or null for

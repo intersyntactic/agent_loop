@@ -20,6 +20,7 @@
 /// [offeredTools] the tools beside them.
 library;
 
+export 'src/history_compaction.dart';
 export 'src/logbook_writer.dart';
 export 'src/loop_exit.dart';
 export 'src/model_request_input.dart';
