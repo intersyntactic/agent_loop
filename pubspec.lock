@@ -85,10 +85,10 @@ packages:
     dependency: transitive
     description:
       name: coverage
-      sha256: "0a864527020e20835094b04b6ca1f9e50c7defedb74892aed72e67323e5072b7"
+      sha256: "8877574b53777c6627f436538eaf4a0485eebb49e19a3cace38474af60584613"
       url: "https://pub.dev"
     source: hosted
-    version: "1.16.1"
+    version: "1.16.2"
   crypto:
     dependency: transitive
     description:
@@ -157,10 +157,10 @@ packages:
     dependency: "direct main"
     description:
       name: is_airlock_api
-      sha256: b3d56b5d25a4f09736e39eedd21e14b4fbc597fd66a60c18f7925843281492a0
+      sha256: cd4f08e4e838ef2fa28521049640dab17aed337bee9cdaea363a9a1881baa21c
       url: "https://pub.dev"
     source: hosted
-    version: "0.18.0"
+    version: "0.18.1"
   is_annotation_shapes:
     dependency: transitive
     description:
@@ -213,10 +213,10 @@ packages:
     dependency: "direct dev"
     description:
       name: is_logbook
-      sha256: "3f00448cd4f3d1de9d18b338482f957e04174b63b2104c6b66be9c0b9cad721e"
+      sha256: f5d4b98b014ed8991a37af4d2bf62ee8c1666bb8c7808d4fd86b856c92826b03
       url: "https://pub.dev"
     source: hosted
-    version: "0.3.1"
+    version: "0.4.4"
   is_logbook_client:
     dependency: "direct main"
     description:
@@ -253,10 +253,10 @@ packages:
     dependency: transitive
     description:
       name: is_reply_vocabulary
-      sha256: c337aae16ba39c6cdc0689af8dcaae8babc94ab2c92d16832988b7d3f74ffb99
+      sha256: "58db7570c6e118b5207ac13435f6e7b44c98ad5471531f458829b35fd07b0a78"
       url: "https://pub.dev"
     source: hosted
-    version: "0.1.0"
+    version: "0.1.2"
   is_shapes:
     dependency: "direct main"
     description:
@@ -285,10 +285,10 @@ packages:
     dependency: transitive
     description:
       name: is_unix_socket_user_check
-      sha256: "85e99f8a46d1c6e3d697e57ac62c5b784f257f283c1ff56f627c70926e976b9b"
+      sha256: "898ad4fccd0ef6ae3249adae704305612426b3a8cd660ad48c3a976640ac9bf8"
       url: "https://pub.dev"
     source: hosted
-    version: "0.1.0"
+    version: "0.2.1"
   is_web_address_vocabulary:
     dependency: transitive
     description:
