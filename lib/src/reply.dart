@@ -39,7 +39,7 @@ AddressPrefix? replyAddressFor(ReplyEndpoint endpoint) => switch (endpoint) {
 /// run on it and prints the requests as one JSON array of is_effects'
 /// `encodeProposedRequest`; those are then sent in order. Done with how
 /// many were sent; [Failed] when either action is refused, the drawing
-/// fails, or what it printed is not requests. [turn] and [usage], how full
+/// fails, or what it printed is not requests. [step] and [usage], how full
 /// the model's context is when the call reported it, go to the drawing
 /// for the message's footer, and [trajectory] to what its Close closes.
 Action<int> replyActions({
@@ -49,7 +49,7 @@ Action<int> replyActions({
   required AddressPrefix replyEndpoint,
   required SignIn signIn,
   required TrajectoryId trajectory,
-  required int turn,
+  required int step,
 }) => drawing.runOrFail(
   drawingArgs(
     text: text,
@@ -57,7 +57,7 @@ Action<int> replyActions({
     replyEndpoint: replyEndpoint,
     signIn: signIn,
     trajectory: trajectory,
-    turn: turn,
+    step: step,
   ),
   then: (ExecResult drawn) => switch (drawn) {
     Exited(exitCode: 0, :final stdout) => switch (requestsIn(stdout)) {
@@ -77,14 +77,15 @@ Action<int> replyActions({
 );
 
 /// How a drawing is run for [text]: the endpoint, sign-in, trajectory,
-/// turn and context as flags, and the text on its stdin.
+/// step and context as flags, and the text on its stdin. The drawings
+/// still name the step's flag `--turn`.
 Args drawingArgs({
   required String text,
   required ModelUsage? usage,
   required AddressPrefix replyEndpoint,
   required SignIn signIn,
   required TrajectoryId trajectory,
-  required int turn,
+  required int step,
 }) => Args([
   '--reply-endpoint',
   jsonEncode(encodeAddressPrefix(replyEndpoint)),
@@ -93,7 +94,7 @@ Args drawingArgs({
   '--trajectory',
   trajectory.hex,
   '--turn',
-  '$turn',
+  '$step',
   if (usage != null) ...['--context-tokens', '${usage.context}'],
   if (usage?.contextWindow case final window?) ...[
     '--context-window',

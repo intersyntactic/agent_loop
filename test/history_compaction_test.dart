@@ -41,17 +41,17 @@ SaidByUser _user(String seed) => SaidByUser(
   address: AddressInExternalSystem.parse('teams:c1')!,
 );
 
-/// The model call answering at [turn].
-ActionProposed _call(String seed, int turn) => ActionProposed(
+/// The model call answering at [step].
+ActionProposed _call(String seed, int step) => ActionProposed(
   hash: _id(seed),
-  place: ProposedForTheModelCall.at(turn),
+  place: ProposedForTheModelCall.at(step),
   program: ProposedProgram.askTheModel,
 );
 
-/// [turn]'s reply, sent.
-ActionProposed _replied(String seed, int turn) => ActionProposed(
+/// [step]'s reply, sent.
+ActionProposed _replied(String seed, int step) => ActionProposed(
   hash: _id(seed),
-  place: ProposedForTheReply.at(turn, 0),
+  place: ProposedForTheReply.at(step, 0),
   program: ProposedProgram.other,
 );
 
@@ -69,10 +69,10 @@ SummaryAsked _asked(String seed, int step, String upTo) => SummaryAsked(
   asked: HistorySummaryAsked(step: step, upTo: _id(upTo)),
 );
 
-/// The summary call at [turn].
-ActionProposed _summaryCall(String seed, int turn) => ActionProposed(
+/// The summary call at [step].
+ActionProposed _summaryCall(String seed, int step) => ActionProposed(
   hash: _id(seed),
-  place: ProposedForTheModelCall.at(turn),
+  place: ProposedForTheModelCall.at(step),
   program: ProposedProgram.askTheModelForASummary,
 );
 
@@ -99,7 +99,7 @@ List<ObjectId> _hashes(List<TrajectoryEvent> events) => [
   for (final e in events) e.hash,
 ];
 
-/// A summary owed up to [upTo], at [turn] when already marked.
+/// A summary owed up to [upTo], at [step] when already marked.
 Matcher _summaryOwed(String upTo, int? step) => isA<SummaryOwed>()
     .having((s) => s.upTo, 'upTo', _id(upTo))
     .having((s) => s.step, 'step', step);
@@ -274,7 +274,7 @@ void main() {
           compactMargin: margin,
         );
 
-    test('a final reply over the line owes a summary at the next turn', () {
+    test('a final reply over the line owes a summary at the next step', () {
       expect(owed(_answeredOverTheLine()), _summaryOwed('a1', null));
     });
 
@@ -287,7 +287,7 @@ void main() {
       expect(owed([..._answeredOverTheLine(), _user('u2')]), _answerOwed('u2'));
     });
 
-    test('a marker written but never proposed is proposed at its own turn, '
+    test('a marker written but never proposed is proposed at its own step, '
         'before a waiting message', () {
       expect(
         owed([..._answeredOverTheLine(), _asked('k1', 1, 'a1'), _user('u2')]),
@@ -329,7 +329,7 @@ void main() {
       expect(owed(history), isNull);
     });
 
-    test("a summary's turn is used: the next answer goes after it", () {
+    test("a summary's step is used: the next answer goes after it", () {
       final history = [
         ..._answeredOverTheLine(),
         _asked('k1', 1, 'a1'),

@@ -1,5 +1,5 @@
 // Proves a reply is the drawing's run, then exactly the requests it
-// printed, each at its own place in the turn's reply, and that a drawing
+// printed, each at its own place in the step's reply, and that a drawing
 // that fails or prints nothing usable sends nothing.
 import 'dart:convert';
 
@@ -91,7 +91,7 @@ Object? _sent(int count) => encodeOutcome(
 
 void main() {
   group('drawingArgs', () {
-    test('text goes on stdin, with the turn and context for its footer', () {
+    test('text goes on stdin, with the step and context for its footer', () {
       final args = drawingArgs(
         text: 'hello',
         usage: const ModelUsage(
@@ -103,7 +103,7 @@ void main() {
         replyEndpoint: _endpoint,
         signIn: _signIn,
         trajectory: _trajectory,
-        turn: 3,
+        step: 3,
       );
 
       expect(args.stdin, 'hello');
@@ -133,7 +133,7 @@ void main() {
         replyEndpoint: _endpoint,
         signIn: _signIn,
         trajectory: _trajectory,
-        turn: 1,
+        step: 1,
       );
 
       expect(args.args, isNot(contains('--context-tokens')));
@@ -184,9 +184,9 @@ void main() {
           replyEndpoint: _endpoint,
           signIn: _signIn,
           trajectory: _trajectory,
-          turn: 4,
+          step: 4,
         ),
-        ProposesAtNextPlace.forTheReply(link, turn: 4),
+        ProposesAtNextPlace.forTheReply(link, step: 4),
       );
 
       expect(result, isA<Done<int>>().having((d) => d.value, 'sent', 1));
@@ -210,9 +210,9 @@ void main() {
           replyEndpoint: _endpoint,
           signIn: _signIn,
           trajectory: _trajectory,
-          turn: 1,
+          step: 1,
         ),
-        ProposesAtNextPlace.forTheReply(link, turn: 1),
+        ProposesAtNextPlace.forTheReply(link, step: 1),
       );
 
       expect(
@@ -239,9 +239,9 @@ void main() {
           replyEndpoint: _endpoint,
           signIn: _signIn,
           trajectory: _trajectory,
-          turn: 2,
+          step: 2,
         ),
-        ProposesAtNextPlace.forTheReply(link, turn: 2),
+        ProposesAtNextPlace.forTheReply(link, step: 2),
       );
 
       expect(
