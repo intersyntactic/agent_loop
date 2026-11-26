@@ -35,6 +35,11 @@
 /// ([toolAction]); the next turn asks the model again with every call's
 /// result. What to do next is always read from the history ([stepOwed]),
 /// so a restarted loop picks up its calls where it left off.
+///
+/// When a final reply leaves less than `--compact-margin` tokens of the
+/// model's context window, the loop asks the model for a summary as a step
+/// of its own, once nothing else is owed, and later requests send the
+/// summary in place of what it covers (lib/src/history_compaction.dart).
 library;
 
 import 'dart:io';
@@ -42,7 +47,14 @@ import 'dart:io';
 import 'package:agent_loop/agent_loop.dart';
 import 'package:is_effects/is_effects.dart' show ProgramName;
 import 'package:is_model_vocabulary/is_model_vocabulary.dart'
-    show ModelReply, ModelRequest, ModelUsage, ProposedToolCalls, ToolName;
+    show
+        CutOffReply,
+        FinishedReply,
+        ModelReply,
+        ModelRequest,
+        ModelUsage,
+        ProposedToolCalls,
+        ToolName;
 import 'package:is_airlock_api/is_airlock_api.dart'
     show
         Action,
@@ -76,7 +88,7 @@ Future<void> main(List<String> args) async {
   if (options == null) {
     stderr.writeln(
       'usage: agent_loop --logbook-read <socket> --logbook-write <socket> '
-      '[--reply-drawing <program>]',
+      '[--reply-drawing <program>] [--compact-margin <tokens>]',
     );
     exitCode = LoopExit.usage.code;
     return;
@@ -206,15 +218,16 @@ Future<Never> _run(_Options options) async {
       return;
     }
     final given = tools();
+    final window = requestWindow(history);
     final request = ModelRequest(
       tools: offeredTools(given.values),
-      turns: trajectoryInput(history, tools: given),
+      turns: trajectoryInput(window, tools: given),
     ).encode();
     final requestHash = await recordModelRequestOnTrajectory(
       chain,
       systemPrompt: _placeholderSystemPrompt,
       request: request,
-      builtFrom: [for (final e in history) e.hash],
+      builtFrom: [for (final e in window) e.hash],
     );
     stdout.writeln('agent_loop: recorded model-request ${requestHash.hex}');
 
@@ -253,6 +266,68 @@ Future<Never> _run(_Options options) async {
     }
   }
 
+  // Asks the model to summarize the window up to [upTo], as a step of its
+  // own: at [markedStep] when its marker is already written, otherwise at
+  // the next step, writing the marker first. Offers the same tools as the
+  // answer did, so the provider's cache of that prefix carries over. Its
+  // outcome arrives in history as a [SummaryByAgent], which [requestWindow]
+  // puts in place of what it covers; a refused, cut-off or tool-calling one
+  // leaves the window whole.
+  Future<void> summarize(ObjectId upTo, int? markedStep) async {
+    final model = startingModel(history).model;
+    final given = tools();
+    final summary = summaryRequest(history, upTo, tools: given);
+    if (model == null || summary == null) {
+      stderr.writeln(
+        'agent_loop: not summarizing up to ${upTo.hex}: '
+        '${model == null ? 'no model to call' : 'it is not in the window'}',
+      );
+      return;
+    }
+    final turn = markedStep ?? nextTurn;
+    nextTurn = turn + 1;
+    latestOwn = ProposedForTheModelCall.at(turn);
+    if (markedStep == null) {
+      await chain.append(
+        HistorySummaryAsked(step: turn, upTo: upTo).toJson(),
+        const Own(),
+      );
+    }
+    final requestHash = await recordModelRequestOnTrajectory(
+      chain,
+      systemPrompt: _placeholderSystemPrompt,
+      request: ModelRequest(
+        tools: offeredTools(given.values),
+        turns: summary.input,
+      ).encode(),
+      builtFrom: [for (final e in summary.covered) e.hash],
+    );
+    stdout.writeln(
+      'agent_loop: summarizing up to ${upTo.hex} at turn $turn, '
+      'model-request ${requestHash.hex}',
+    );
+    final asked = Program.askTheModel.runOrFail<ModelReply>(
+      ModelCall(
+        signIn: model.signIn,
+        model: model.model,
+        request: EntryId.parse(requestHash.hex)!,
+      ),
+      then: (ModelReply reply) => Done(reply),
+    );
+    switch (await asked.next(
+      ProposesAtNextPlace.forTheModelCall(link, turn: turn),
+    )) {
+      case Done(value: FinishedReply()):
+        stdout.writeln('agent_loop: summarized');
+      case Done(value: CutOffReply() || ProposedToolCalls()):
+        stderr.writeln('agent_loop: summary did not finish, not used');
+      case Failed(:final why):
+        stderr.writeln('agent_loop: summary call failed: $why');
+      case Action():
+        throw StateError('runOrFail returned an unresolved Action');
+    }
+  }
+
   // Proposes [tool]'s action at [place]; its outcome arrives in history.
   Future<void> runTool(ProposedForAnIntent place, OneActionTool tool) async {
     final ProposedForAnIntent(:turn, :intent) = place;
@@ -264,7 +339,12 @@ Future<Never> _run(_Options options) async {
 
   // Does whatever the history owes now, if anything.
   Future<void> doOwed() async {
-    switch (stepOwed(history, tools: tools(), latestOwn: latestOwn)) {
+    switch (stepOwed(
+      history,
+      tools: tools(),
+      latestOwn: latestOwn,
+      compactMargin: options.compactMargin,
+    )) {
       case null:
         return;
       case ModelCallOwed(:final after):
@@ -278,6 +358,8 @@ Future<Never> _run(_Options options) async {
               'message without an answer.',
           'notice that its model calls are spent',
         );
+      case SummaryOwed(:final upTo, :final step):
+        await summarize(upTo, step);
     }
   }
 
@@ -316,28 +398,42 @@ Future<Never> _run(_Options options) async {
   return Future.any([follow(), link.ended]);
 }
 
+/// The context, in tokens, a final reply may leave before the loop
+/// summarizes: room for the summary call's own reply, the next message and
+/// its answer.
+const _defaultCompactMargin = 40000;
+
 final class _Options {
   const _Options({
     required this.logbookRead,
     required this.logbookWrite,
     required this.replyDrawing,
+    required this.compactMargin,
   });
 
   final String logbookRead;
   final String logbookWrite;
+
+  /// See [_defaultCompactMargin].
+  final int compactMargin;
 
   /// The program that draws a reply as its surface's requests, run through
   /// the airlock's program driver; null sends no replies.
   final Executable? replyDrawing;
 
   /// Reads `--logbook-read`, `--logbook-write` and, optionally,
-  /// `--reply-drawing`.
+  /// `--reply-drawing` and `--compact-margin`.
   static _Options? parse(List<String> args) {
     String? logbookRead;
     String? logbookWrite;
     ProgramName? replyDrawing;
+    var compactMargin = _defaultCompactMargin;
     for (var i = 0; i < args.length; i++) {
       switch (args[i]) {
+        case '--compact-margin' when i + 1 < args.length:
+          final margin = int.tryParse(args[++i]);
+          if (margin == null || margin < 0) return null;
+          compactMargin = margin;
         case '--logbook-read' when i + 1 < args.length:
           logbookRead = args[++i];
         case '--logbook-write' when i + 1 < args.length:
@@ -356,6 +452,7 @@ final class _Options {
             replyDrawing: replyDrawing == null
                 ? null
                 : Executable(replyDrawing),
+            compactMargin: compactMargin,
           )
         : null;
   }

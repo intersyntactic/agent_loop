@@ -392,6 +392,12 @@ void main() {
     );
     await answer(2, const NothingRan('no sign-in'));
     final cutHash = await answer(3, const Ran(CutOffReply(text: 'half an')));
+    // A summary call: its marker on the chain first, then its own turn.
+    await chain.append(
+      HistorySummaryAsked(step: 4, upTo: ranHash).toJson(),
+      const Own(),
+    );
+    await answer(4, const Ran(FinishedReply(text: 'they asked where')));
 
     final items = <TrajectoryFeedItem>[];
     final sub = followTrajectoryHistory(
@@ -405,7 +411,8 @@ void main() {
     final found = items.whereType<TrajectoryEvent>().toList();
 
     // Every proposal comes back with its place, then its call's end: a reply
-    // for a call that ran, a refusal for one that didn't.
+    // for a call that ran, a refusal for one that didn't. A call whose turn a
+    // summary marker named first is a summary call, and its reply a summary.
     expect(
       [
         for (final e in found)
@@ -419,6 +426,12 @@ void main() {
                   ? 'cut'
                   : '?'}',
             ModelCallRefused() => 'refused',
+            SummaryAsked(:final asked) =>
+              'summary asked at ${asked.step} '
+                  'up to ${asked.upTo == ranHash ? 'ran' : '?'}',
+            SummaryByAgent(:final reply, :final upTo) =>
+              'summary "${reply.text}" '
+                  'up to ${upTo == ranHash ? 'ran' : '?'}',
             FetchEnded() ||
             SaidByUser() ||
             TurnOnChain() ||
@@ -433,24 +446,34 @@ void main() {
         'refused',
         'proposed 3.model-call model=true',
         'reply cut',
+        'summary asked at 4 up to ran',
+        'proposed 4.model-call model=false',
+        'summary "they asked where" up to ran',
       ],
     );
     // Each end names the proposal just before it, so every call has ended.
     for (final (i, e) in found.indexed) {
       if (e
           case SaidByAgent(:final proposed) ||
+              SummaryByAgent(:final proposed) ||
               ModelCallRefused(:final proposed)) {
         expect(proposed, found[i - 1].hash);
       }
     }
     expect(
-      actionsSettled(found, latestOwn: ProposedForTheModelCall.at(3)),
+      actionsSettled(found, latestOwn: ProposedForTheModelCall.at(4)),
       isTrue,
     );
-    expect(lastPlace(found), ProposedForTheModelCall.at(3));
-    // A cut-off reply reaches the model marked as cut off, never as finished.
-    expect(_turnsOf(found), [
-      {'kind': 'agent', 'text': 'yes, here'},
+    expect(lastPlace(found), ProposedForTheModelCall.at(4));
+    // A cut-off reply reaches the model marked as cut off, never as finished;
+    // the summary stands in for the reply it covers.
+    expect(_turnsOf(requestWindow(found)), [
+      {
+        'kind': 'user',
+        'text':
+            'Your summary of this conversation before this point:\n\n'
+            'they asked where',
+      },
       {
         'kind': 'agent',
         'text': 'half an\n\n(This reply was cut off before it finished.)',
@@ -557,6 +580,8 @@ void main() {
             FetchEnded(result: ToolRefused(:final why)) => 'refused: $why',
             SaidByAgent() ||
             ModelCallRefused() ||
+            SummaryByAgent() ||
+            SummaryAsked() ||
             SaidByUser() ||
             TurnOnChain() ||
             TrajectoryStarted() ||
