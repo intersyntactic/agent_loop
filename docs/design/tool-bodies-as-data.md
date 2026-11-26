@@ -1,0 +1,849 @@
+# Tools as data: a tool's steps travel as JSON terms, and the agent loop carries them out
+
+Status: proposal, round 4 (22 Nov 2026), after RECAST 4/4 in rounds 1, 2
+and 3 ([TEMPER.md](TEMPER.md)); round 3's ten findings are folded in. For
+agent_loop, is_tool / is_tools_api (tool-af), is_airlock_api
+(airlock-api-b3), the airlock (airlock-5c), documents_module
+(documents-module-21), the docx driver (docx-driver-ce) and teams_module
+(teams-module-aa). Nothing here is built. The language gets its name through
+a crucible once the design settles.
+
+## The point
+
+A tool's steps are data. So a module **sends its tools over the wire**, and
+the agent loop carries them out without ever linking the module's code. A
+new module, or a new tool in one, needs no release of the loop. And because
+every effect in the steps is a proposal, nothing a tool does is hidden from
+the airlock.
+
+## Vocabulary
+
+Mission → Trajectory → Turn → Intent → the tool's **Steps** → Action ⇄ Outcome
+
+- An **intent** is one tool call in the model's reply.
+- A tool's **steps** are what it does when called, of two kinds. An
+  **effect step** is a `propose`, which becomes an action. A **computation
+  step** works out a value on the way to one (`concat`, `if`, `get`). Only
+  effect steps reach the airlock.
+- **The loop computes, but has no effects.** It carries out computation
+  steps itself, as it already parses replies and builds prompts; anything
+  that touches the world is an effect step. A computation step has nothing
+  for the airlock to decide, and replay works it out again identically.
+- **The model decides between intents, never inside one.** Every decision
+  inside a tool (an `if`) was made in advance by whoever wrote the steps,
+  like a standing order.
+- Only a tool's **result** reaches the model, or, if the call ends early,
+  an error listing the actions already done. Values along the way stay in
+  the loop and the logbook.
+- An **action** is one proposal, which the airlock decides; each has exactly
+  one **outcome**.
+- A **place** is an address, not a level: **(turn, intent, action)**, "the
+  first action of the second intent in turn 3". See [Replay](#replay).
+
+## What Nick asked for
+
+- The agent loop only knows tools; it writes down tool calls and the airlock
+  decides what happens (21 Nov 20:20).
+- A tool is a function: a **signature** (name, parameters, return type,
+  description) in the manifest, and the actions the airlock decides and
+  drivers carry out (21:16). Every step can be a proposed action (21:21).
+  Code is data (21:25).
+- The model may write its own tools and load them at run time when the
+  operator allows it (21:33).
+- Tools are functions and models know tools as JSON in and JSON out, so the
+  steps are JSON too (23:07). The model writes the terms directly: no Dart,
+  no transpiler (decided 23:10, after round 2 found the transpiler to be an
+  unreviewed semantic authority).
+- Level 2, model-written tools kept across trajectories, is deleted (23:10).
+- The point is that modules send tools over the wire as data; the word is
+  **steps**, not "body", which pointed at code that executes (22 Nov).
+- "The loop only knows tools" means **no effects in the loop**, not no
+  computation (22 Nov).
+- A purely functional language for computation (22 Nov).
+
+## Evidence: the model writes terms reliably
+
+Two experiments (21 Nov), fresh agents given only the spec and the tasks,
+every answer **executed** against fake actions and checked on both its result
+and its exact sequence of actions. Controls: deliberately broken answers fail
+(negative), and a reference solution passes (positive).
+
+1. Five small tools in JSON terms, Lisp text and Starlark, two writers each:
+   **30/30** first try in every language. Ceiling: it can't rank them.
+2. Five harder tools (nested branches, several effects in a fixed order,
+   ints to text, a fix-from-the-checker's-error task), three writers each, in
+   positional terms vs calls in tool-call shape (`{"name", "input"}`):
+   - positional: **15/15** first try, about 4.5 KB for the five;
+   - tool-call shape: 14/15 first try (one missing `]` deep in a chain of
+     `let`s), 15/15 after one repair, about 7.0 KB;
+   - the repair task: 6/6 writers fixed both planted bugs.
+
+So: **positional terms.** They're as reliable or better, and about a third
+smaller. The tool-call shape's extra nesting is where its one error came
+from. With samples this small, the honest claim is "no evidence the model
+struggles", not "proven".
+
+## The shape
+
+```
+module or model sends terms ──► checked (JSON, forms, ops, types, sizes) ──► recorded ──► carried out in the loop
+                                                                            (the steps)    computation steps here;
+                                                                                           each action = a proposal
+```
+
+One artifact: what is sent is what's recorded, reviewed and run.
+
+### A tool definition is one JSON object
+
+```json
+{"name": "read_document",
+ "description": "Reads a Word document from the reports folder.",
+ "input_schema": {"type": "object", "properties": {"name": {"type": "string"}}, "required": ["name"]},
+ "bound": {"drive": "b!xyz", "folder": "01abc"},
+ "steps":
+   ["if", ["not", ["endsWith", ["lower", ["input", "name"]], ".docx"]],
+     ["fail", ["concat", ["input", "name"], " is not a .docx"]],
+     ["let", ["file", ["propose", "fetch", "graph",
+                ["concat", "/drives/", ["bound", "drive"], "/items/", ["bound", "folder"],
+                           ":/", ["input", "name"], ":/content"]]],
+       ["get", ["propose", "docxToPassage", ["var", "file"], 5000], "text"]]]}
+```
+
+(Action names in examples, such as `fetch`, `docxToPassage` and `send`, stand
+for an is_airlock_api program on an input; `send` is a `make-web-requests`.)
+
+`bound` holds values fixed when the tool is defined, such as the drive and
+folder ids. They're recorded with the tool, so the model never types them,
+and a reviewer sees exactly what the tool reaches. **Only a level-0 tool has
+`bound`**, set by the person who wrote it; a level-1 definition has no
+`bound` field to write (see [What the operator grants](#what-the-operator-grants)).
+
+**Every reference is a form, and every string is literal text.** There are
+three namespaces, each read by its own form with a literal name:
+`["input", "name"]` (checked against `input_schema`'s properties),
+`["bound", "drive"]` (checked against `bound`) and `["var", "file"]` (a
+`let` in scope). So inputs, bound values and local names can't shadow each
+other, there's no parameter list to disagree with `input_schema`, and a
+literal like `"$budget.docx"` means exactly that. (The experiment used
+`fn` parameter lists and `$`-prefixed variables; the forms are untested
+with models, so the next experiment measures them.) The bound values are
+part of what's hashed and pinned for each call.
+
+**Input is checked against `input_schema` when a call comes in.**
+is_tools_api's `Input.parse(schema)` rebuilds the same checker a module
+built in Dart from the schema it sent, so the schema and its checker are
+one description read back, never two.
+
+No output schema: a tool's return type is its action's declared outcome
+(stage 1) or derived from the outcomes of the actions and tools it uses
+(stage 2). Where the model is shown a return type, it's rendered from those.
+No `concurrent` flag either: the airlock decides every effect.
+
+### The two kinds of tool
+
+- A **level-0 tool's steps** propose actions: `["propose", "<action>", …]`.
+- A **level-1 tool's steps** call the trajectory's given tools, `["call",
+  "<tool>", …]`, each with its own bound values, and never name an action.
+
+Nothing else calls a level-1 tool: only the model does. So calls go at most
+two deep (the model calls a level-1 tool, which calls given tools, which
+propose actions), and recursion can't be written.
+
+### The term language
+
+- **Values:** strings, integers, booleans, records, lists, and opaque
+  **references** to recorded outcomes (what `fetch` returns).
+- **Forms:** `input`, `bound`, `var`, `let`, `if`, `fail`, `record`, `list`,
+  `propose` (level 0 only), `call` (level 1 only), and `[<op>, …]` for a
+  fixed table of pure operations, each with a fixed argument order (the
+  table in the experiment: `concat`, `lower`, `endsWith`, `prefix`,
+  `substring`, `get`, `filterSuffix`, `maxBy`, `toText`, …). A tool's steps
+  are one term; there's no `fn` wrapper, since `input_schema` already names
+  the inputs.
+- **Records:** `["record", "title", <term>, "count", <term>]` takes
+  alternating literal keys and terms. Keys are non-empty, unique and written
+  out, never computed, so a record's shape is known at definition. `["get",
+  <record>, "title"]` reads one; its key must be a literal, checked against
+  the shape.
+- **No** import form, host call, loop, recursion, exception other than
+  `fail`, clock, randomness or environment. Something outside the table
+  can't be written, so nothing has to reject it.
+- **No operation throws.** Each returns a value or halts the call:
+  `substring` out of range halts, and `prefix(s, n)` is the one that clamps
+  ("the first n characters"); `at` out of range and `maxBy` of an empty list
+  halt. Nothing truncates silently.
+- **Checked at definition:** JSON, known forms and operations, argument
+  counts, no free variables, and every argument's type against the
+  signature of the operation, action or tool it's passed to. Values have no
+  polymorphism beyond a list's element type, so the checker infers each
+  term's type in one walk.
+- **Sizes are bounded at construction:** each string at most 64 KiB; each
+  list at most 1,000 elements; each value at most 256 KiB serialized and 16
+  deep, counting shared parts every time they appear; integers within
+  ±2^53; a tool's steps at most 64 KiB of JSON and **64 terms deep**,
+  rejected at definition (without the depth cap, 64 KiB of `[[[[…` nests
+  about 32,000 deep and could run a recursive checker out of stack). Per
+  call: at most 4 MiB allocated in total and at most 10,000 terms
+  evaluated. Exceeding any of these halts the call. So `s = concat(s, s)`
+  repeated, or a list of lists of a shared string, can't run away.
+- **Against the experiment's 25 tools** (written by models, 22 Nov
+  measurement): at most 1,470 bytes (median 657), 15 terms deep (median
+  10), 149 terms (median 71) and 6 proposals (median 3). A replayed call
+  with 6 proposals evaluates at most about 900 terms. Every cap has at least
+  4× headroom over what real tools used.
+
+### The operation table is defined once
+
+Each operation is one entry in a table, as data: its name, its parameters'
+names and types, one sentence of meaning, and the Dart that runs it. The
+model's spec text, the parameter labels in the review rendering and the
+checker's signatures are all **generated from that table**, so what the
+model is told an operation does can't drift from what it does. The table and
+the evaluator are the safety-critical part, small enough to review whole.
+The experiment's throwaway evaluator was about 250 lines of Dart.
+
+### Effects, refusals, halts
+
+- `propose(action, args…)` proposes a declared action at the intent's next
+  action number; `next` returns there until its outcome is in the logbook
+  (see [A tool's steps are a pure function](#a-tools-steps-are-a-pure-function)). A given
+  tool called from a level-1 tool proposes under the same intent,
+  continuing its action numbers.
+- **Steps can't branch on a refusal or a failure.** An airlock refusal or a
+  driver failure **ends the call**, and the model sees it as the call's
+  error result. So a tool can't probe the airlock and adapt unseen. What
+  this does *not* claim: a successful outcome carries information, by
+  design, and steps branch on it. A question like "does this file exist,
+  else create it" is a list followed by a read, never a read that fails.
+- **A lost acknowledgement isn't a failure.** If an effect was dispatched
+  and its outcome never came back, the outcome is unknown (see
+  [dispatch states](#the-airlocks-dispatch-states)).
+- **Halt** (an operation out of bounds, a replay mismatch, an unknown
+  outcome) also ends the call with an error result the model sees, naming why.
+  The turn continues; a halt never wedges a trajectory.
+- **A call that ends early lists what already happened.** Its error result
+  names each action that ran and its outcome ("`make-web-requests`,
+  action 0: ran"), so a model that retries knows what not to redo. The
+  action that ended the call is reported with its refusal reason verbatim,
+  **never as "did not run"**: is_effects' `Outcome` today is `Ran |
+  Refused(why)`, and a `Refused` can follow partial work (a
+  `make-web-requests` refused with "sent 1 of 3"). A retry is a new intent,
+  at a new place; the logbook doesn't stop it re-sending. That residue is
+  the same as a model calling `send` twice by hand, and the airlock's rules
+  are its bound. Accepted by Nick.
+- **Pending Nick's ruling:** airlock-api-b3 has put a split of `Refused`
+  to Nick (denied / failed partway / unknown). Until then the loop builds
+  on `Refused`, and only the airlock's decision entry tells a deny from a
+  driver failure.
+
+### Review
+
+A person reviews a level-0 tool in a **canonical rendering**, never the raw
+positional JSON: one `propose` per line, with each argument labelled by its
+name from the action's signature. The rendering is generated from the
+recorded steps, so what is reviewed is what runs.
+
+### Documents stay in drivers
+
+`fetch` returns a **reference**: the sha256 the logbook already records.
+The fetching driver writes the bytes to a content-addressed store on the
+machine, keyed by that hash; other drivers only read it, and drivers never
+call each other. `docxToPassage` (the docx driver) is a proposal like any
+other, whose reach names the hash, so the airlock sees and decides the
+read; it returns an already-bounded passage. A stranger's document is
+parsed only in a confined driver, never in the core, and never copied into
+the logbook.
+
+**A trajectory may read a reference only if an outcome entry on its own
+chain produced it.** Otherwise one trajectory could read another's document
+by guessing or copying a hash. Owner: airlock-api-b3 with the drivers
+(stage 2).
+
+## Replying
+
+A turn's final plain text **is** the reply (Nick, 21 Nov 23:29). The loop
+hands it to the conversation's reply tool, so the model calls tools only to
+act, never to speak, and a turn always reaches the person. Final text that
+is empty or only whitespace sends nothing. The model never supplies the
+address: the reply tool's destination comes from the trajectory's start
+entry (`EntryStartsTrajectory.replyEndpoint`, written by the docking
+station; Nick, 22 Nov 15:27), and the airlock's path-prefix rule for the
+starting conversation is the boundary. `replyEndpoint` is null for a
+trajectory started with no conversation behind it: then the loop proposes
+no reply, without an error, and the final text stays only in the logbook,
+as the model's turn.
+
+**The reply is two actions** (Nick, 22 Nov 17:37), so the loop runs no
+module code and the airlock still decides on the exact bytes before they
+leave:
+
+0. Run the **teams-message** app, teams_module's request-building,
+   installed on the box and run by name through the program driver, with
+   the final text and the bound `replyEndpoint`. It has no effect; it
+   prints the Requests.
+1. `make-web-requests` with exactly the Requests from that run's
+   `Finished` `ExecResult.stdout`, never its `Reported` chunks, whose
+   boundaries fall wherever the pipe split.
+
+This is the first composition in the system that isn't a model's turn: a
+second effect that depends on the first one's successful outcome. For now
+it's the loop's own code, not a tool's steps. If the reply itself is refused, the turn ends under the
+per-turn cap on tool calls and repeated refusals; the logbook shows why.
+
+## A tool's steps are a pure function
+
+The language is purely functional, `propose` included. A tool's steps mean
+one function:
+
+```
+next(input, outcomes so far)  →  Propose(action, args)  |  Return(value)  |  Fail(message)
+```
+
+`propose` isn't an effect inside an expression. The k-th `propose` the
+steps reach reads outcome k from the list; if the list has no outcome k yet,
+`next` stops there and returns `Propose(action, args)`. The surface syntax
+is unchanged: `propose` still sits inside `let`, as the models wrote it.
+
+The loop's whole job for a call:
+
+1. `next(input, [])` → `Propose(fetch, …)`; record it at (turn, intent, 0).
+2. Its outcome o₀ is recorded → `next(input, [o₀])` →
+   `Propose(docxToPassage, …)` at (turn, intent, 1).
+3. o₁ is recorded → `next(input, [o₀, o₁])` → `Return(text)`, the intent's
+   result.
+
+Nothing is suspended or saved between outcomes: each one calls `next` from
+the start. With 2 to 5 effects per tool and microsecond operations, the
+repeated work (about n²/2) is negligible, and the cap on terms evaluated
+bounds it. This is how Temporal and Durable Functions run workflows,
+replaying deterministic code against a history of results; there the
+purity is a convention, here the language can't express anything else.
+
+## Replay
+
+Replay is calling `next` again with the recorded outcomes. Because it is a
+function, a restart gets the same next proposal; there is no separate
+replay mechanism.
+
+- **Identity is the place: (turn, intent, action).** The intent's number is
+  fixed once the model's reply is recorded, which happens before its steps
+  propose anything, so a restart recovers it unchanged. Each proposal is
+  stored at its place. A restart calls `next` with the outcomes recorded so
+  far and requires each proposal it returns to **equal** the one stored at
+  that place; a mismatch (a different version, a corrupted logbook entry) halts
+  the call. There's no lookup by content, so two identical `send`s in one
+  tool are two places, and both dispatch.
+- **One numbering, not two.** is_airlock_api 0.15.0's `PlaceInTrajectory`
+  is sealed (Nick, 22 Nov 15:14 and 17:37; owned by airlock-api-b3), so
+  every proposal in a turn has a place and the kinds can't be confused:
+  - `ProposedForTheModelCall(turn)`, written `[turn, "model-call"]`: one
+    action;
+  - `ProposedForAnIntent(turn, intent, action)`, written
+    `[turn, intent, action]`: an intent's actions, numbered from 0;
+  - `ProposedForTheReply(turn, action)`, written `[turn, "reply", action]`:
+    the reply's actions, numbered from 0 (see [Replying](#replying)).
+
+  Within a turn the order is the model call, then intents by (intent,
+  action), then the reply. 0.14's `[turn, step]` doesn't parse. There's no
+  Open card; Nick dropped it at 15:14.
+- **Pinned per call:** the hash of the steps (bound values included), the
+  operation table's version and the action library's version. A restart on
+  different versions halts the call (an error result the model sees, not a
+  stuck turn).
+- **Tool names are immutable within a trajectory.** Redefining makes a new
+  tool, and calls already made keep their steps.
+
+### The airlock's dispatch states
+
+Owner: airlock-api-b3 / airlock-5c. **These states already exist in the
+logbook; no new entry is needed.** The proposal entry is *proposed*. The
+airlock's Allow decision entry, written durably before it calls the driver,
+is *dispatched*. The outcome entry is *recorded*. An Allow with no outcome
+after it is an **unknown outcome**.
+
+Whether an unknown outcome may be re-dispatched depends on whether
+**repeating the action leaves the world as it was**. That's a fixed fact
+about each program, so it lives on the closed program set, not per driver
+or per destination (none of ours honours an idempotency key, and
+`make-web-requests` refuses every header but content-type, so a key
+couldn't travel):
+
+- **safe to repeat:** `read`, `read-bytes`, `fetch` (no effect); `write`
+  (the same bytes end in the same state, though `replaced` may then say
+  true); `model` (it costs money, but the loop never saw the lost reply);
+- **halt, outcome stays unknown:** `start` (any executable) and
+  `make-web-requests`.
+
+## What the operator grants
+
+Per action, a tool adds no reach: the airlock decides every effect against
+the trajectory's rules. **What a tool grants is closed-loop composition:** its
+steps can condition later actions on earlier outcomes (fetch, branch, send)
+without a model turn, and without the airlock seeing the sequence as a whole.
+
+**What "the airlock decides" covers, reach by reach** (the airlock's
+`GrantsReaches.decide`, `lib/src/decide_reach.dart`, at airlock v0.4.3):
+- a fetch, a web request or a model call is checked against
+  `whatMayLeaveThisMachine`;
+- a program start is checked against `programsItMayRun`, from airlock
+  v0.4.3 (https://github.com/intersyntactic/airlock/commit/c7c84fd54358cc21fb794d0549fb530189e286eb).
+  Before it, `decide` was handed only `whatMayLeaveThisMachine`, so every
+  `Starts` was allowed unchecked and labelled `DecidedBy.rules`
+  (airlock-api-b3's finding, 24 Nov 15:34). A suit on
+  `sharesThisMachinesNetwork` shares the box's network, so that was a way
+  around every web grant. Any claim here that the airlock limits which
+  programs run holds only where v0.4.3 or later is deployed;
+- a file read or write is allowed with no check, since by itself it
+  carries nothing off the machine. No file-path rule exists at run time.
+
+So the rules-time checks in is_flight_rules (a given tool must be
+reachable; later, a tool's program must be in `programsItMayRun`) say what
+the rules may contain, and the airlock's run-time decision is what holds
+each action to them. A check exists only where both are in place.
+
+A model-written tool calls only the trajectory's **given tools**, each with
+the bound values a person set, and never a raw action. So composition adds
+no reach at the tool level either: anything a level-1 tool does, the model
+could do by calling the given tools one by one. Level 1 saves turns; it
+doesn't open doors.
+
+Levels, in the trajectory's starting rules, as a closed set:
+
+0. **Given tools only.** Tools sent by modules, reviewed and merged by
+   people. The `define_tool` tool isn't mounted, so a definition can't even
+   be sent.
+1. **Model-written tools, for this trajectory.** The model sends a
+   definition through `define_tool`; the loop checks it (JSON, forms,
+   operations, types, sizes; no `bound`; `call` only to given tools) and
+   records it; the model can call it from then on; it dies with the
+   trajectory.
+
+There is no level 2. A tool worth keeping becomes a module's tool that a
+person merges (level 0). Keeping model-written tools would let one
+trajectory's injected behaviour fire in another, and that is removed, not
+guarded.
+
+A model never adds an **action**; actions are driver capabilities, added by
+people. That's the line between self-modification and escaping the airlock.
+
+## Where it runs
+
+In the agent loop's process. The loop holds no sign-ins or secrets, and with
+total, size-bounded operations and no loops or recursion, a call's cost is
+bounded. Checking a definition is JSON parsing plus a walk over the terms;
+no compiler or analyzer runs on what a module or model sends. (Not Dart
+loaded at run time, by hot reload or otherwise: Dart can reach `dart:io`,
+needs the compiler in production, holds one version per process, and can
+read the clock, so it would undo every property above.)
+
+## Stages
+
+1. **One action per tool.** Each tool's steps are a single `propose` of a
+   driver action that does its whole job. (Its two examples, `readDocument`
+   fetching and reading in one action, and teams_module's card
+   build-and-send, no longer hold: see [Stage 1's actions](#stage-1s-actions)
+   below.) It's the same wire
+   format as stage 2; the checker accepts only that one shape, and carrying
+   it out is filling in the arguments and proposing. No reference ever
+   reaches the model, so none can be forged or forwarded. This serves CAM
+   now, and a module written against it keeps working in stage 2. Stage
+   1's steps are typed exactly, in is_tools_api: an action name plus
+   arguments that are each a bound value, an input field or a literal.
+   Nothing delivers tools to the loop today (documents_module's
+   `ToolHandler`s run nowhere), so there's nothing to migrate but
+   documents_module.
+   **The driver's action renders the text the model reads** (today
+   `Output<O>.forModel`), so the loop builds in no module code. The loop
+   adds only one uniform frame around every result, naming the tool and
+   marking where the result's text begins and ends. The frame is generic,
+   not module code, so a stranger's document text always arrives marked as
+   a result, whatever format its driver chose. The model's exact view is
+   recorded either way: the loop records every model request's rendered
+   text before it's sent (`recordModelRequestOnTrajectory`). Cost: each
+   action picks its own body format. (Proposed by tool-af, 22 Nov; the
+   frame added here; Nick can overrule.)
+2. **The term language and the evaluator**, for level 1 and for level-0
+   tools of more than one action. Gate: a first workflow that needs
+   composition. Nick chose **CAM's case review report** (22 Nov): it reads
+   outside case data and posts a card or document to Teams. Its exact steps
+   are being gathered; the evaluator is built against them, not against
+   made-up examples.
+   **Frozen (Nick, 24 Nov).** The case review report is paused with the
+   Hart work (https://github.com/intersyntactic/agent_loop/issues/41), so
+   stage 2 has no workflow to build against, and TEMPER left it
+   uncertified after round 4. Nothing in stage 2 is built or tempered
+   further until a workflow is shown to need a judgement-free chain of
+   two or more effects. Then TEMPER round 4's 15 flaws are folded in and
+   round 5 is struck. Stage 1 goes ahead without it.
+
+### Stage 1's actions
+
+Agreed 24 Nov by airlock-api-b3, flight-rules-af, tools-api-bc and
+agent-loop-21, with Nick's decisions marked.
+
+**Stage 1 is built to prove the route (Nick, 24 Nov 13:18).** Its one
+tool lists one fixed case folder, with no input from the model. It
+doesn't serve CAM's document reading. It runs the whole path once, at a
+size where nothing can leak: a module's tool in the trajectory's rules,
+shown to the model, called, proposed by the loop, decided by the airlock,
+and handed back framed. Every later stage adds to a route that already
+works.
+
+**It runs against an Enspyr test tenant and folder (Nick, 24 Nov
+13:23)**, not a client's data. CAM's rules grant no fetches, and Hart's
+tenant is paused. The trajectory's rules grant a Graph read of that one
+folder, under a sign-in that can make it. infra-dc sets up the tenant,
+the folder and the sign-in.
+
+**A result can carry a key, not just data (documents-module-21).** By
+default, Graph's folder listing gives every file an
+`@microsoft.graph.downloadUrl`: a short-lived link that downloads the file
+with no sign-in. The airlock stops the model fetching it, but nothing
+stops the model copying it into a reply, and then whoever reads the reply
+can download the file. So the listing tool asks only for what the model
+needs, `?$select=name,size,lastModifiedDateTime,folder`, and the field
+never reaches the model. The grant's pattern already allows `$select`.
+Stage 1's grant is listing-only (`ChannelFiles.listingGrant`), with no
+file `/content` read. The general rule for every tool: a result is
+something the model may repeat, so a tool asks for no field that grants
+access by being known. That includes pre-signed links, tokens and share
+links.
+
+**Microsoft's wall, proven (infra-dc, 24 Nov 14:13).** Probed straight to
+Graph as the narrow test app, which holds per-item
+`Files.SelectedOperations.Selected`, so the site-wide `Sites.Selected`
+fallback wasn't needed:
+- the test folder gives 200;
+- a sibling folder in the same site gives 404, because Graph hides that
+  it exists;
+- a folder in another site gives 403;
+- without `$select`, `downloadUrl` is there, and with it, it's gone.
+
+One detail: the drive's root lists the granted folder's name, and only
+that one. Our wall, probed through the airlock with the fetch driver's
+log showing no outbound request for each refusal, runs once is_effects
+0.14.3 and is_flight_rules 0.6.0 are published and the rules are
+generated.
+
+**A tool's action is its own closed type, `ToolAction`, in is_tools_api.**
+It is not a free-text name, and it is not the airlock's `Program` set.
+**In stage 1 it has one case, `fetch`** (origin, path and sign-in), since
+the folder listing is stage 1's only tool. It's still a sealed class, not
+a plain `Fetch` type. Each other case comes back when a tool needs it, as
+a new case that breaks agent_loop's exhaustive switch until it's mapped
+(agreed by airlock-api-b3, flight-rules-af, tools-api-bc and
+agent-loop-21):
+
+- `read` and `read-bytes` come back once `RelativePath` has moved to a
+  vocabulary. It imports `package:path`, which a vocabulary may not, so
+  that move comes first.
+- `RunExecutable(ProgramName)` comes back in the same change as
+  `FlightRules`' check that a given tool's program is in
+  `programsItMayRun`. That's the rule it already applies to
+  `programsItNeeds`, and a case can't land without its check. At run
+  time it relies on airlock v0.4.3 or later, the first to check a start
+  against `programsItMayRun`.
+- Never as tool actions: model calls, which would nest model calls and let
+  case text leave on a tool's say-so; `make-web-requests`, since posting
+  changes the world and the Teams send is the loop's reply step; and
+  `write`, until a tool needs it.
+
+agent_loop turns a `ToolAction` into the airlock's `Program` in one
+exhaustive switch. Neither is_tools_api nor is_airlock_api depends on the
+other, so adding a program to the airlock gives tools nothing new:
+widening what tools can do is a decision of its own. The airlock decides
+every action on its reach, whatever type a tool used to build it, so
+`ToolAction`'s width is only about what tools are allowed to ask for.
+
+**A fetch needs:**
+- `Origin` and `WebPath`, from is_web_address_vocabulary, which already
+  exists;
+- `SignIn`, which moves from is_effects into its own
+  `is_sign_in_vocabulary` (a sign-in isn't a web address), re-exported by
+  is_effects (effects-0f);
+- no `keep`, because a text-only stage 1 always keeps text.
+
+is_tools_api admits those two vocabularies by name, with its new
+`pubspec.lock` check.
+
+**No arguments in stage 1** (tools-api-bc's proposal; decided by Nick,
+24 Nov 13:18). The
+listing's origin, sign-in and path are all fixed, so its input is
+`Input.none`, and nothing uses `OneActionTool.arguments`,
+`InputReference` or `argumentsFor`. They're dropped from stage 1 rather
+than kept as API nothing exercises (still in git at tools_api 8074361).
+What comes back with (d) fills a pattern's holes, not an argv, so it
+won't have the same shape. is_tools_api 0.4.0 either way. agent_loop's
+`fillToolCall` shrinks to finding the named tool.
+
+**Release order** (flight-rules-af): is_flight_rules 0.6.0 (`givenTools`)
+ships on the is_tools_api release that has `ToolAction`, not on 0.3.0,
+whose action is free text. Otherwise free-text actions would be written
+into flight-rules.json and need replacing straight away.
+
+**Shipped in is_flight_rules 0.6.0 (flight-rules-af):** `FlightRules`
+refuses a given tool that no grant in `fetchesMayReach` could ever let
+out (`WhatMayLeaveThisMachine.couldEverFetch`), so "this tool can never
+work" shows up when the rules are written, not as refusals mid-turn. A
+grant counts only when its pattern covers the tool's origin and path
+**and** its sign-in could be the tool's (documents-module-21):
+`GoesAsNobody` only for a tool with no sign-in, `GoesAsSignIn` only when
+its sign-in equals the tool's, and `GoesAsBotLeasedFrom` for any sign-in,
+since which bot is leased is known only when the fetch runs. The airlock
+still decides each fetch at run time; this check only catches early what
+would be refused anyway.
+
+**`readDocument` is a `fetch`** under documents_module's
+`FromPathsMatching` grant. It isn't a new built-in, which would put
+document knowledge into trusted driver code, and it isn't an Executable,
+because a process can't be held to a path pattern.
+
+Two things are open, and between them they decide what stage 1 can do:
+
+1. **How a fetch tool's arguments build its `WebFetch`.** The arguments
+   are positional slots (a bound value, an input field or a literal),
+   which fit an Executable's argv. A fetch's input is a typed object: an
+   origin, a sign-in and a path. The Graph path for a document is built
+   from a bound drive and the model's file name, and joining them
+   arbitrarily is `concat`, which is stage 2's term language. The options
+   weighed:
+   - (a) Stage 1 is RunExecutable only. Rejected: an Executable isn't
+     decided request by request, it reaches whatever its suit can.
+   - (b) A document built-in in the airlock. Rejected: it puts document
+     knowledge into trusted code.
+   - (c) The model writes whole Graph paths. Safe, since the grant's
+     `FromPathsMatching` is the real limit, but the model would have to
+     know Graph.
+   - **(d) Recommended (airlock-api-b3): a fetch tool's path is a
+     `PathPattern`, its holes filled with whole values.** is_flight_rules
+     0.5.0 already has this small, reviewed language
+     (`lib/src/path_pattern.dart`): literal segments, one `{name}` hole
+     per segment, an optional fixed suffix for Graph's `items/F:/name:`
+     form, and holes that refuse `/ \ :` and all-dots. Filling a hole with
+     one checked value isn't concatenation. `read_document` becomes an
+     origin, a sign-in and
+     `/v1.0/drives/{drive}/items/{folder}:/{name}:/content`, with drive
+     and folder bound and name from the model. The tool can point at the
+     same pattern the rules grant, so the path it builds matches the grant
+     by construction. It needs `PathPattern.fill(holes) → WebPath?`, null
+     when a value breaks its hole's rule. **The rule has to be stated on
+     the filled segment**, as flight-rules-af's probe found. `WebPath`
+     refuses `..` anywhere in the raw path, and `%25` followed by `2E`,
+     `2F`, `5C` or `25`. `Uri.encodeComponent` leaves `.` alone, so
+     `final..docx`, `notes...txt` and `100%2Eplan.docx` all pass today's
+     hole rule but are refused once encoded, and a suffix can do it too
+     (`{name}.docx` filled with `report.` gives `report..docx`). So a hole
+     accepts `v` exactly when `encode(v)` plus the suffix contains no `..`
+     and no `%25` followed by `2E`, `2F`, `5C` or `25`, on top of today's
+     checks. The test runs both ways: `fill(v)` is non-null exactly when
+     the hole accepts `v`, and `matches(fill(v))` always holds. It's
+     generated over realistic filenames with dots, `%`, `@`, `#`, spaces
+     and non-ASCII. A test written from the rule's prose would have passed
+     both earlier versions. **Where `PathPattern` lives:** is_flight_rules depends on
+     is_tools_api (for `givenTools`), so is_tools_api can't depend on
+     is_flight_rules without a cycle. `PathPattern` moves to
+     is_web_address_vocabulary beside `WebPath` and `AddressPrefix`, and
+     both packages depend on that. It meets the vocabulary rule:
+     `PathPattern` and `QueryOptionName` need only `WebPath`'s neighbours
+     and checked_json. is_flight_rules re-exports it, so its API doesn't
+     break. tools-api-bc will admit named vocabularies to is_tools_api's
+     dependency boundary, each listed by name, with a new check over
+     `pubspec.lock` so a vocabulary that gains a non-vocabulary dependency
+     fails is_tools_api's own tests. Its README promise becomes "nothing
+     of intersyntactic's but its vocabularies".
+2. **How a document's bytes become text the model reads.** A fetch of a
+   `.docx` returns a zip, and the design already reads documents as
+   `fetch` then `docxToPassage` ([Documents stay in drivers](#documents-stay-in-drivers)),
+   which is two actions, so stage 2. A transform in the loop's own
+   process is out. A parser bug triggered by a stranger's document would
+   run with the loop's power to propose actions as the trajectory and to
+   write its chain. The airlock still bounds each proposal by the rules,
+   but the logbook record that decisions and replay rest on would no
+   longer be trustworthy. That breaks "a stranger's document is parsed
+   only in a confined driver, never in the core". A confined child process
+   started by the loop is out too, because the loop would start a program
+   the airlock never decides, and this design exists to keep exactly one
+   rule: only the airlock reaches the world or starts programs. That
+   leaves two options:
+   - **Recommended (airlock-api-b3, agent-loop-21): stage 1 serves only
+     tools whose result is already text**, such as listing a folder
+     (Graph returns JSON). Reading a document waits for stage 2.
+   - **If reading can't wait:** the transform is an airlock-decided run of
+     a fixed program, an Executable such as `docx-to-passage` in
+     `programsItMayRun`, run by the program driver in a suit with the
+     fetched bytes as its input. That's a fixed two-step pipeline, fetch
+     then that one run, with each step decided. It's the smallest step into
+     stage 2, not a way around it, and the parser is docx-driver-ce's
+     tested code.
+
+**Decided (Nick, 24 Nov 13:11, relayed by airlock-api-b3): reading a
+document can wait.** Stage 1 serves only tools whose result is already
+text, such as listing a folder, with no transform and no pipeline. The
+fixed fetch then `docx-to-passage` pipeline, and the content-addressed
+store it needs to keep a document's bytes out of the loop and the
+logbook, are stage 2's first piece, built against CAM's case review
+report.
+
+**What that leaves (d) to do (airlock-api-b3).** The stage-1 tool left is
+listing a folder, `/v1.0/drives/{drive}/items/{folder}/children`, and both
+holes are bound when the tool is configured. The model supplies nothing in
+the path, so a listing tool's path can be a literal `WebPath`, and stage 1
+needs no `fill`. (d) is needed the first time the model names something
+that ends up in a path, such as reading by name or opening a subfolder,
+which is the work deferred to stage 2. Recommendation: agree to (d) in
+principle, and build nothing until reads come back.
+
+**Paging, checked before stage 1 ships.** Graph returns a long listing in
+pages, and the next page's address carries `$skiptoken=<token>` in its
+query. A pattern's query rule (is_flight_rules 0.5.0,
+`path_pattern.dart:68` and `:136`) allows only options the grant names,
+each once, each with a value of letters separated by commas
+(`^[A-Za-z]+(,[A-Za-z]+)*$`, made for `$select=name,size`). A skiptoken is
+an opaque token with digits and symbols, so **today's rule refuses the
+next page**, and `$top=500` is refused too, since a number isn't a word.
+So a stage-1 listing returns Graph's first page only. That's enough when
+a case folder is smaller than a page. It isn't when one is larger, and
+the model would see a listing cut short with nothing to say so. A
+listing that silently drops items is worse than a refusal. The steps, in
+order (airlock-api-b3; the order decided by Nick, 24 Nov 13:23):
+
+1. **Always, and ships with stage 1: a "first page only" notice.** It
+   costs nothing in the rules. The module's tool description states it
+   every time, for example: "Returns the first page only. If the result
+   contains @odata.nextLink, the folder has more items than shown." The raw
+   JSON the model reads already carries the marker, and the description
+   tells the model what it means. That's text the module owns about its own
+   tool, so no Graph knowledge enters the loop and nothing touches the
+   airlock. A page marker declared to the loop's frame would add a
+   mechanism with nothing to gain in stage 1. That waits for stage 2,
+   where a tool's results may need the loop to act on them (agreed by
+   airlock-api-b3 and agent-loop-21).
+2. **If CAM's folders are bigger than one page: a whole-number query rule
+   for `$top` only**, digits with an upper bound. A number can't carry
+   text, so it stays within what the word-list rule is for: it shapes the
+   read and says nothing. Measure first: Graph's real page size for
+   `/children`, its largest allowed `$top`, and CAM's biggest folder. None
+   of the three has been checked. Nick sees this before flight-rules-af
+   adds it.
+3. **Last: an opaque-token rule for `$skiptoken`.** A forged token reaches
+   only the same listing, but it would be the first rule that lets free
+   text leave in a query string. The model could put case words into the
+   token, and they'd go to Microsoft under our sign-in. That's low harm
+   (our own tenant's logs), but it's a channel the rules don't have today.
+   If paging is ever needed, the better shape is for the tool to follow
+   `nextLink` itself, copying Graph's token unchanged and never the
+   model's. That's two steps, so stage 2, alongside the deferred reads.
+
+**Decided (Nick, 24 Nov 13:14, relayed by airlock-api-b3): (d) in
+principle.** A fetch tool's path is a `PathPattern` filled with whole
+values, ideally the grant's own pattern, with `fill`'s rule stated on
+`encode(v)` plus the suffix and tested both ways. **Nothing is built until
+reading by name returns:** no `fill`, and `PathPattern` doesn't move to
+is_web_address_vocabulary yet. Stage 1's listing tool uses a literal
+`WebPath`.
+
+**How the model calls a tool: native tool use replaces the text format**
+(settled with effects-0f, https://github.com/intersyntactic/effects/issues/30,
+recorded on
+https://github.com/intersyntactic/agent_loop/pull/35#issuecomment-7121417836).
+agent_loop v0.6.0 has the model write
+`<tool_call>{"name", "input"}</tool_call>` in its reply text. That is only
+stage 1's bridge. Once is_model_vocabulary ships issue 30, the loop sends
+`{tools, turns}`, the model answers with tool calls, and the text format is
+dropped in that same release:
+- call `i` of turn `t` takes the places `[t, i, action]`;
+- the loop, not the driver, turns each action's outcome into the tool's
+  result, by action kind. A fetch that comes back 404 ran and failed, so
+  it's `ToolFailed`, not `ToolRan`;
+- `ToolRefused` comes only from an outcome where nothing ran.
+
+In stage 2 a model-written definition arrives through a `define_tool` call.
+
+## First proof (stage 2's gate)
+
+In agent_loop, no deploy. It passes only if each of these behaves as stated:
+
+1. Happy path: `read_document` and a `send` workflow are carried out against
+   an in-memory crux, one `next` call per outcome. `next` is also tested
+   alone: a list of outcomes in, one step out, no fakes.
+2. Kill after the first action; carry out again; only the second is proposed.
+3. Two identical `send`s in one tool: two places, both dispatch; a crash
+   between them resumes at the second.
+4. A second call with the same arguments never receives the first call's
+   outcome.
+5. A re-derived proposal that differs from the stored one: halts.
+6. A version mismatch on restart: halts, with an error result the model sees.
+7. `concat(s, s)` repeated past the string bound: halts, and the loop stays
+   responsive.
+8. A driver result over its bound is never a core value; no fetched bytes in
+   the logbook.
+9. A refusal ends the call, and the model sees it.
+10. An Allow with no outcome after it: re-dispatched for a program that's
+    safe to repeat (`read`, `fetch`, `write`, `model`); halts as unknown for
+    `start` and `make-web-requests`.
+11. A malformed definition (bad JSON, an unknown form or operation, a wrong
+    argument count, a wrong argument type, a free variable, a computed
+    record key, oversize): rejected with an error naming the place in the
+    terms.
+12. A level-1 definition that names an action, carries `bound`, or calls a
+    level-1 tool: rejected. `["input", "drive"]` and `["bound", "drive"]`
+    read different values; a literal `"$budget.docx"` stays literal.
+13. At level 0, `define_tool` isn't in the manifest.
+14. A call that halts after one `send`: its error result lists the `send`,
+    action 0, as ran. A call ended by a `Refused("sent 1 of 3")` reports
+    that reason verbatim, never "did not run".
+18. A reference produced on another trajectory's chain: the read is
+    refused.
+19. Input that doesn't match `input_schema`: rejected before any step, by
+    the checker `Input.parse` rebuilt from the schema.
+15. A value past the depth cap, a call past the allocation cap, a call past
+    the cap on terms evaluated: each halts, and the loop stays responsive.
+16. `substring` out of range halts; `prefix` past the end returns the whole
+    string.
+17. The model's spec text, the review labels and the checker's signatures
+    are generated from the one operation table.
+
+## Leads to check before building stage 2
+
+- **CEL** (Google's Common Expression Language), **checked 22 Nov: ours
+  stays.** pub.dev's `cel` (0.6.1, Oct 2026, https://github.com/atn832/cel-dart)
+  is maintained and widely downloaded, but it's "a simplified port of
+  cel-go" that skips cel-go's type checking: type errors are thrown at
+  evaluation, where our checker rejects them at definition. It names no
+  cost bound. CEL is text, so a third-party parser would read every
+  module's and model's steps; and it has no notion of effects, so `propose`
+  and sequencing would stay ours, with two languages in one tool. CEL fits
+  as a policy expression; it doesn't fit as a tool's steps.
+- **Dhall**: pure and total, every program ends. Likely heavier than we
+  need.
+- **Lean**, not as the tool language (its elaborator runs arbitrary code,
+  so loading untrusted Lean has effects) but to **prove the evaluator**:
+  replay, soundness of the checker, level 1's reach, refusals ending the
+  call, and the caps. See [proving-the-evaluator.md](proving-the-evaluator.md).
+
+## Who does what (once agreed)
+
+- **agent_loop** (this session): the term language spec, the operation
+  table, checker and evaluator; replay by place; the `define_tool` path; the
+  manifest; the canonical rendering for review.
+- **is_tools_api** (a session in tools_api, Nick's decision 22 Nov; its
+  brief is
+  `~/.claude/projects/-Users-nick-git-orgs-intersyntactic-tools-api/handover/2026-11-22T15-30-00.md`):
+  `Input.parse(schema)` first; then, beside `ToolSpec`, the stage-1
+  definition with `bound` and exactly typed steps. The stage-2 term
+  language gets its own package, which modules write and the loop and the
+  review renderer read; the definition likely moves into it.
+- **is_tool** (tool-af): `ToolHandler` retired once documents_module has
+  moved, not before (documents_module depends on is_tool ^0.4.0).
+- **is_airlock_api / airlock** (airlock-api-b3, airlock-5c): the place as
+  (turn, intent, action); "safe to repeat" on the closed program set;
+  the content-addressed store and the own-chain rule for references; the
+  `Refused` split (Nick's call); the level in the rules.
+- **docx driver** (docx-driver-ce): `readDocument` for stage 1;
+  `docxToPassage`, bytes in by reference and a bounded passage out, for
+  stage 2.
+- **documents_module** (documents-module-21): `read_document` and
+  `list_documents` as tools sent with their steps, `DriveFolder` ids as
+  `bound`.
+- **teams_module** (teams-module-aa): stage 1, the card build-and-send as a
+  driver action; stage 2, `reply` as a tool with steps.
