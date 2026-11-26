@@ -68,7 +68,7 @@ void main() {
     await expectLater(
       runToEnd(
         _writeAll(['a.dart']),
-        ProposesAtNextPlace.forIntent(link, turn: 0, intent: 0),
+        ProposesAtNextPlace.forIntent(link, step: 0, intent: 0),
       ),
       throwsFormatException,
     );
@@ -83,7 +83,7 @@ void main() {
     await expectLater(
       runToEnd(
         _writeAll(['a.dart']),
-        ProposesAtNextPlace.forIntent(link, turn: 0, intent: 0),
+        ProposesAtNextPlace.forIntent(link, step: 0, intent: 0),
       ),
       throwsA(
         isA<FormatException>().having(
@@ -100,11 +100,11 @@ void main() {
     // Intent 1 starts first and takes two actions; intent 0 takes one.
     final second = runToEnd(
       _writeAll(['b.dart', 'c.dart']),
-      ProposesAtNextPlace.forIntent(link, turn: 1, intent: 1),
+      ProposesAtNextPlace.forIntent(link, step: 1, intent: 1),
     );
     final first = runToEnd(
       _writeAll(['a.dart']),
-      ProposesAtNextPlace.forIntent(link, turn: 1, intent: 0),
+      ProposesAtNextPlace.forIntent(link, step: 1, intent: 0),
     );
     await Future.wait([first, second]);
     expect(link.places.toList()..sort(), [
@@ -120,7 +120,7 @@ void main() {
     await expectLater(
       runToEnd(
         _writeAll(['a.dart', 'b.dart']),
-        ProposesAtNextPlace.forTheModelCall(link, turn: 1),
+        ProposesAtNextPlace.forTheModelCall(link, step: 1),
       ),
       throwsStateError,
     );
@@ -132,7 +132,7 @@ void main() {
     final link = _FakeLink();
     final sent = await runToEnd(
       _writeAll(['a.dart', 'b.dart']),
-      ProposesAtNextPlace.forTheReply(link, turn: 4),
+      ProposesAtNextPlace.forTheReply(link, step: 4),
     );
     expect(sent, isA<Done<List<String>>>());
     expect(link.places, [

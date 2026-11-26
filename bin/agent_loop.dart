@@ -10,10 +10,10 @@
 /// and, whenever the turn rule says the agent should answer, records a
 /// model request and proposes [AskTheModel] through the logbook, naming it.
 ///
-/// Each answer is one turn, counted from 0: its model call through
-/// [ProposesAtNextPlace.forTheModelCall], then its reply through
-/// [ProposesAtNextPlace.forTheReply]. A
-/// restarted loop's next turn follows the latest place in its history.
+/// Each model call is one step, counted from 0: the call through
+/// [ProposesAtNextPlace.forTheModelCall], then, when it answers, its reply
+/// through [ProposesAtNextPlace.forTheReply] at the same step. A
+/// restarted loop's next step follows the latest place in its history.
 ///
 /// A reply is two actions ([replyActions]): run the program named by
 /// `--reply-drawing`, such as teams_module's `teams-reply-drawing`, which
@@ -25,14 +25,14 @@
 /// request goes. Without a drawing, an endpoint or a sign-in, nothing is
 /// sent and the loop says why.
 ///
-/// When the model call is refused, the turn's reply says why, so its sender
+/// When the model call is refused, the step's reply says why, so its sender
 /// decides what to do. A refused reply is only logged: the way back to the
 /// person is what failed.
 ///
 /// The model is offered the tools the trajectory's rules give it, inside
-/// the request ([offeredTools]). A reply that calls tools ends its turn
+/// the request ([offeredTools]). A reply that calls tools ends its step
 /// with each call's action, one at a time, each call at its own intent
-/// ([toolAction]); the next turn asks the model again with every call's
+/// ([toolAction]); the next step asks the model again with every call's
 /// result. What to do next is always read from the history ([stepOwed]),
 /// so a restarted loop picks up its calls where it left off.
 ///
@@ -133,7 +133,7 @@ Future<Never> _run(_Options options) async {
   );
 
   final history = <TrajectoryEvent>[];
-  var nextTurn = 0;
+  var nextStep = 0;
   // The latest place this loop proposed at: until its proposal is in
   // history, nothing next is owed.
   PlaceInTrajectory? latestOwn;
@@ -142,11 +142,11 @@ Future<Never> _run(_Options options) async {
       history.whereType<TrajectoryStarted>().firstOrNull?.rules.givenTools ??
       const {};
 
-  // Says [text] back to whoever started the trajectory, as [turn]'s reply,
+  // Says [text] back to whoever started the trajectory, as [step]'s reply,
   // footered with [usage] when the model call reported it. A refused reply
   // is only logged: there is no other way back.
   Future<void> sayBack(
-    int turn,
+    int step,
     String text,
     String what, {
     ModelUsage? usage,
@@ -180,7 +180,7 @@ Future<Never> _run(_Options options) async {
       );
       return;
     }
-    stdout.writeln('agent_loop: proposing the $what at turn $turn');
+    stdout.writeln('agent_loop: proposing the $what at step $step');
     final sent = await runToEnd(
       replyActions(
         drawing: drawing,
@@ -189,11 +189,11 @@ Future<Never> _run(_Options options) async {
         replyEndpoint: address,
         signIn: signIn,
         trajectory: started.trajectory,
-        turn: turn,
+        step: step,
       ),
-      ProposesAtNextPlace.forTheReply(link, turn: turn),
+      ProposesAtNextPlace.forTheReply(link, step: step),
     );
-    latestOwn = ProposedForTheReply.at(turn, 0);
+    latestOwn = ProposedForTheReply.at(step, 0);
     switch (sent) {
       case Done(:final value):
         stdout.writeln('agent_loop: $what sent, in $value request(s)');
@@ -204,7 +204,7 @@ Future<Never> _run(_Options options) async {
     }
   }
 
-  // Asks the model at the next turn, to answer [after]: a message, or a
+  // Asks the model at the next step, to answer [after]: a message, or a
   // tool call's result. A reply that calls a tool is said to no one: the
   // history then owes its tool's action.
   Future<void> askTheModel(ObjectId after) async {
@@ -231,8 +231,8 @@ Future<Never> _run(_Options options) async {
     );
     stdout.writeln('agent_loop: recorded model-request ${requestHash.hex}');
 
-    final turn = nextTurn++;
-    latestOwn = ProposedForTheModelCall.at(turn);
+    final step = nextStep++;
+    latestOwn = ProposedForTheModelCall.at(step);
     final asked = Program.askTheModel.runOrFail<ModelReply>(
       ModelCall(
         signIn: model.signIn,
@@ -242,7 +242,7 @@ Future<Never> _run(_Options options) async {
       then: (ModelReply reply) => Done(reply),
     );
     final Result<ModelReply> outcome = await asked.next(
-      ProposesAtNextPlace.forTheModelCall(link, turn: turn),
+      ProposesAtNextPlace.forTheModelCall(link, step: step),
     );
     switch (outcome) {
       case Done(:final value):
@@ -251,14 +251,14 @@ Future<Never> _run(_Options options) async {
         // answered.
         if (value is ProposedToolCalls) return;
         await sayBack(
-          turn,
+          step,
           value.text,
           'answer to ${after.hex}',
           usage: value.usage,
         );
       case Failed(:final why):
         stdout.writeln('agent_loop: model call failed: $why');
-        await sayBack(turn, 'The model call failed: $why', 'failure notice');
+        await sayBack(step, 'The model call failed: $why', 'failure notice');
       case Action():
         // runOrFail's own then never returns one: it is called only with
         // the output, never asked to propose a further action.
@@ -284,12 +284,12 @@ Future<Never> _run(_Options options) async {
       );
       return;
     }
-    final turn = markedStep ?? nextTurn;
-    nextTurn = turn + 1;
-    latestOwn = ProposedForTheModelCall.at(turn);
+    final step = markedStep ?? nextStep;
+    nextStep = step + 1;
+    latestOwn = ProposedForTheModelCall.at(step);
     if (markedStep == null) {
       await chain.append(
-        HistorySummaryAsked(step: turn, upTo: upTo).toJson(),
+        HistorySummaryAsked(step: step, upTo: upTo).toJson(),
         const Own(),
       );
     }
@@ -303,7 +303,7 @@ Future<Never> _run(_Options options) async {
       builtFrom: [for (final e in summary.covered) e.hash],
     );
     stdout.writeln(
-      'agent_loop: summarizing up to ${upTo.hex} at turn $turn, '
+      'agent_loop: summarizing up to ${upTo.hex} at step $step, '
       'model-request ${requestHash.hex}',
     );
     final asked = Program.askTheModel.runOrFail<ModelReply>(
@@ -315,7 +315,7 @@ Future<Never> _run(_Options options) async {
       then: (ModelReply reply) => Done(reply),
     );
     switch (await asked.next(
-      ProposesAtNextPlace.forTheModelCall(link, turn: turn),
+      ProposesAtNextPlace.forTheModelCall(link, step: step),
     )) {
       case Done(value: FinishedReply()):
         stdout.writeln('agent_loop: summarized');
@@ -330,11 +330,11 @@ Future<Never> _run(_Options options) async {
 
   // Proposes [tool]'s action at [place]; its outcome arrives in history.
   Future<void> runTool(ProposedForAnIntent place, OneActionTool tool) async {
-    final ProposedForAnIntent(:turn, :intent) = place;
+    final ProposedForAnIntent(:step, :intent) = place;
     latestOwn = place;
     stdout.writeln('agent_loop: running tool ${tool.name} at $place');
     await toolAction(tool)
-        .next(ProposesAtNextPlace.forIntent(link, turn: turn, intent: intent));
+        .next(ProposesAtNextPlace.forIntent(link, step: step, intent: intent));
   }
 
   // Does whatever the history owes now, if anything.
@@ -351,9 +351,9 @@ Future<Never> _run(_Options options) async {
         await askTheModel(after);
       case ToolActionOwed(:final place, :final tool):
         await runTool(place, tool);
-      case ModelCallsSpent(:final turn):
+      case ModelCallsSpent(:final step):
         await sayBack(
-          turn,
+          step,
           'I stopped after $maxModelCallsPerMessage model calls for this '
               'message without an answer.',
           'notice that its model calls are spent',
@@ -381,7 +381,7 @@ Future<Never> _run(_Options options) async {
             chain.resumeAfter(lastOwn);
           }
           final last = lastPlace(history);
-          nextTurn = (last?.turn ?? -1) + 1;
+          nextStep = (last?.step ?? -1) + 1;
           latestOwn = last;
           stdout.writeln('agent_loop: caught up at place ${last ?? 'none'}');
           await doOwed();

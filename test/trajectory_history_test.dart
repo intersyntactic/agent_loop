@@ -347,7 +347,7 @@ void main() {
     );
     final outcomeKind = Kind.parse(outcomeOfProposedActionKind)!;
     Future<client.ObjectId> answer(
-      int turn,
+      int step,
       Outcome<ModelReply> outcome,
     ) async {
       final asked = Program.askTheModel.runOrFail<ModelReply>(
@@ -360,7 +360,7 @@ void main() {
       );
       final before = chain.tip;
       final done = asked.next(
-        ProposesAtNextPlace.forTheModelCall(link, turn: turn),
+        ProposesAtNextPlace.forTheModelCall(link, step: step),
       );
       while (chain.tip == before) {
         await Future<void>.delayed(const Duration(milliseconds: 10));
@@ -392,7 +392,7 @@ void main() {
     );
     await answer(2, const NothingRan('no sign-in'));
     final cutHash = await answer(3, const Ran(CutOffReply(text: 'half an')));
-    // A summary call: its marker on the chain first, then its own turn.
+    // A summary call: its marker on the chain first, then its own step.
     await chain.append(
       HistorySummaryAsked(step: 4, upTo: ranHash).toJson(),
       const Own(),
@@ -411,7 +411,7 @@ void main() {
     final found = items.whereType<TrajectoryEvent>().toList();
 
     // Every proposal comes back with its place, then its call's end: a reply
-    // for a call that ran, a refusal for one that didn't. A call whose turn a
+    // for a call that ran, a refusal for one that didn't. A call whose step a
     // summary marker named first is a summary call, and its reply a summary.
     expect(
       [
@@ -481,7 +481,7 @@ void main() {
     ]);
   });
 
-  test('a tool\'s fetch is proposed as the tool says, at the turn\'s one '
+  test('a tool\'s fetch is proposed as the tool says, at the step\'s one '
       'intent, and its outcome comes back as what the model is shown', () async {
     final rootResult = await rawWriter.write(
       Kind.usersAssignedToTrajectory,
@@ -515,11 +515,11 @@ void main() {
       ),
     );
 
-    // Runs the tool at [turn]'s intent, answering as the airlock would.
-    Future<String> run(int turn, Outcome<WebResponse> outcome) async {
+    // Runs the tool at [step]'s intent, answering as the airlock would.
+    Future<String> run(int step, Outcome<WebResponse> outcome) async {
       final before = chain.tip;
       final done = toolAction(tool)
-          .next(ProposesAtNextPlace.forIntent(link, turn: turn, intent: 0));
+          .next(ProposesAtNextPlace.forIntent(link, step: step, intent: 0));
       while (chain.tip == before) {
         await Future<void>.delayed(const Duration(milliseconds: 10));
       }

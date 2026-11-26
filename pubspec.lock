@@ -157,10 +157,10 @@ packages:
     dependency: "direct main"
     description:
       name: is_airlock_api
-      sha256: "9b67008604c7cf38ddf737f9905e557bf434fa5cf4c8bfe6dfcf1eb6e1336cc9"
+      sha256: "0a10e9bc0f7ba06941f227f047092799cdbcb9eec07ecf7870db1268479e82a0"
       url: "https://pub.dev"
     source: hosted
-    version: "0.21.0"
+    version: "0.22.0"
   is_annotation_shapes:
     dependency: transitive
     description:

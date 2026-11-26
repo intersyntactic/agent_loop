@@ -61,24 +61,24 @@ SaidByUser _user(String seed, {bool startsTurn = true}) => SaidByUser(
   address: AddressInExternalSystem.parse('teams:c1')!,
 );
 
-/// A model call at [turn], or with [model] false, [action] of its reply.
+/// A model call at [step], or with [model] false, [action] of its reply.
 ActionProposed _proposed(
   String seed,
-  int turn, {
+  int step, {
   int action = 0,
   bool model = true,
 }) => ActionProposed(
   hash: _id(seed),
   place: model
-      ? ProposedForTheModelCall.at(turn)
-      : ProposedForTheReply.at(turn, action),
+      ? ProposedForTheModelCall.at(step)
+      : ProposedForTheReply.at(step, action),
   program: model ? ProposedProgram.askTheModel : ProposedProgram.other,
 );
 
-/// A tool's fetch for the [call]th call of [turn]'s reply.
-ActionProposed _fetch(String seed, int turn, {int call = 0}) => ActionProposed(
+/// A tool's fetch for the [call]th call of [step]'s reply.
+ActionProposed _fetch(String seed, int step, {int call = 0}) => ActionProposed(
   hash: _id(seed),
-  place: ProposedForAnIntent.at(turn, call, 0),
+  place: ProposedForAnIntent.at(step, call, 0),
   program: ProposedProgram.fetchFromWeb,
 );
 
@@ -129,13 +129,13 @@ const _threeFiles = ToolRan('3 files');
 ModelCallRefused _refused(String seed, String call) =>
     ModelCallRefused(hash: _id(seed), proposed: _id(call));
 
-/// [turn]'s model call, its reply calling list_documents, and the fetch
+/// [step]'s model call, its reply calling list_documents, and the fetch
 /// that ran for it.
-List<TrajectoryEvent> _fetchedOnce(int turn) => [
-  _proposed('p$turn', turn),
-  _agent('a$turn', 'p$turn', calls: _callsListDocuments),
-  _fetch('f$turn', turn),
-  _fetched(_threeFiles, 'f$turn'),
+List<TrajectoryEvent> _fetchedOnce(int step) => [
+  _proposed('p$step', step),
+  _agent('a$step', 'p$step', calls: _callsListDocuments),
+  _fetch('f$step', step),
+  _fetched(_threeFiles, 'f$step'),
 ];
 
 void main() {
@@ -358,16 +358,16 @@ void main() {
         '$maxModelCallsPerMessage model calls, and told once', () {
       final history = [
         _user('u1'),
-        for (var turn = 0; turn < maxModelCallsPerMessage; turn++)
-          ..._fetchedOnce(turn),
+        for (var step = 0; step < maxModelCallsPerMessage; step++)
+          ..._fetchedOnce(step),
       ];
       final latest = lastPlace(history);
 
       expect(
         stepOwed(history, tools: _tools, latestOwn: latest),
         isA<ModelCallsSpent>().having(
-          (s) => s.turn,
-          'turn',
+          (s) => s.step,
+          'step',
           maxModelCallsPerMessage - 1,
         ),
       );
@@ -519,7 +519,7 @@ void main() {
     });
   });
 
-  test('the latest place is by turn, then the reply after the model call; '
+  test('the latest place is by step, then the reply after the model call; '
       'none used is null', () {
     expect(lastPlace([]), isNull);
     expect(

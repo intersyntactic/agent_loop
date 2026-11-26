@@ -35,30 +35,30 @@ abstract interface class ProposesActionsThroughTheLogbook {
 final class ProposesAtNextPlace implements ProposesActions {
   ProposesAtNextPlace._(this._link, this._placeOf);
 
-  /// Every action of [intent] in [turn], numbered from 0.
+  /// Every action of [intent] in [step], numbered from 0.
   factory ProposesAtNextPlace.forIntent(
     ProposesActionsThroughTheLogbook link, {
-    required int turn,
+    required int step,
     required int intent,
   }) => ProposesAtNextPlace._(
     link,
-    (n) => ProposedForAnIntent.at(turn, intent, n),
+    (n) => ProposedForAnIntent.at(step, intent, n),
   );
 
-  /// The one action of [turn]'s model call.
+  /// The one action of [step]'s model call.
   factory ProposesAtNextPlace.forTheModelCall(
     ProposesActionsThroughTheLogbook link, {
-    required int turn,
+    required int step,
   }) {
-    final only = ProposedForTheModelCall.at(turn);
+    final only = ProposedForTheModelCall.at(step);
     return ProposesAtNextPlace._(link, (n) => n == 0 ? only : null);
   }
 
-  /// Every action of [turn]'s reply, numbered from 0.
+  /// Every action of [step]'s reply, numbered from 0.
   factory ProposesAtNextPlace.forTheReply(
     ProposesActionsThroughTheLogbook link, {
-    required int turn,
-  }) => ProposesAtNextPlace._(link, (n) => ProposedForTheReply.at(turn, n));
+    required int step,
+  }) => ProposesAtNextPlace._(link, (n) => ProposedForTheReply.at(step, n));
 
   final ProposesActionsThroughTheLogbook _link;
 

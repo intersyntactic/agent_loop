@@ -18,8 +18,8 @@ import 'package:is_logbook_client/is_logbook_client.dart' as client;
 import 'package:is_shapes/is_shapes.dart' show EntryId;
 import 'package:test/test.dart';
 
-String _proposal(int turn) => jsonEncode({
-  'place': ProposedForTheModelCall.at(turn).toJson(),
+String _proposal(int step) => jsonEncode({
+  'place': ProposedForTheModelCall.at(step).toJson(),
   'program': 'model',
   'input': {
     'signIn': 'anthropic-api',

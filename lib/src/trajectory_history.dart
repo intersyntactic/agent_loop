@@ -202,7 +202,7 @@ enum ProposedProgram {
 /// An action this loop proposed: [place] is the place it named, and
 /// [program] what it runs. A replayed history needs both: whether a message
 /// was already answered, whether a tool call was already run, and which
-/// turn the next proposal starts.
+/// step the next proposal starts.
 final class ActionProposed extends TrajectoryEvent {
   const ActionProposed({
     required super.hash,
@@ -311,7 +311,7 @@ Stream<TrajectoryFeedItem> followTrajectoryHistory(
           case ActionProposedByAgentLoop(:final place, :final program)) {
         final id = EntryId.parse(entry.id.hex)!;
         final upTo = place is ProposedForTheModelCall
-            ? summariesAsked[place.turn]
+            ? summariesAsked[place.step]
             : null;
         final proposed = switch (program) {
           AskTheModel() when upTo != null =>
@@ -527,7 +527,7 @@ List<ModelTurn> trajectoryInput(
                   for (final (i, call) in calls.indexed)
                     ToolAnswered(
                       callId: call.id,
-                      result: _answerTo(history, place.turn, i, call, tools),
+                      result: _answerTo(history, place.step, i, call, tools),
                     ),
                 ],
             },
@@ -551,18 +551,18 @@ List<ModelTurn> trajectoryInput(
 /// rather than something the user just said.
 const _summaryLead = 'Your summary of this conversation before this point:\n\n';
 
-/// What the model hears about [call], the [index]th call of [turn]'s reply,
+/// What the model hears about [call], the [index]th call of [step]'s reply,
 /// read against [tools]: why it can't run, its fetch's result once ended,
 /// or [notRun].
 ToolResult _answerTo(
   List<TrajectoryEvent> history,
-  int turn,
+  int step,
   int index,
   ToolCall call,
   Map<ToolName, OneActionTool> tools,
 ) => switch (toolCalled(call, tools)) {
   CallCannotRun(:final result) => result,
-  CallRuns() => switch (_fetchAt(history, _callPlace(turn, index))) {
+  CallRuns() => switch (_fetchAt(history, _callPlace(step, index))) {
     null => notRun,
     final fetch => _fetchEnd(history, fetch)?.result ?? notRun,
   },
@@ -574,10 +574,10 @@ List<ToolCall>? _callsIn(ModelReply reply) => switch (reply) {
   FinishedReply() || CutOffReply() => null,
 };
 
-/// Where the [index]th call of [turn]'s reply proposes its tool's one
+/// Where the [index]th call of [step]'s reply proposes its tool's one
 /// action: each call is its own intent, and a one-action tool's action is 0.
-ProposedForAnIntent _callPlace(int turn, int index) =>
-    ProposedForAnIntent.at(turn, index, 0);
+ProposedForAnIntent _callPlace(int step, int index) =>
+    ProposedForAnIntent.at(step, index, 0);
 
 /// The fetch this loop proposed at [place] in [history], if any.
 ActionProposed? _fetchAt(
@@ -763,7 +763,7 @@ StepOwed? _conversationStepOwed(
   if (call != null && calls != null && !spent) {
     for (final (i, toolCall) in calls.indexed) {
       if (toolCalled(toolCall, tools) case CallRuns(:final tool)) {
-        final place = _callPlace(call.place.turn, i);
+        final place = _callPlace(call.place.step, i);
         if (_fetchAt(history, place) == null) {
           return ToolActionOwed(place: place, tool: tool);
         }
@@ -776,9 +776,9 @@ StepOwed? _conversationStepOwed(
   if (call == null || reply == null || calls == null) return null;
   if (spent) {
     final replied = history.whereType<ActionProposed>().any(
-      (e) => e.place is ProposedForTheReply && e.place.turn == call.place.turn,
+      (e) => e.place is ProposedForTheReply && e.place.step == call.place.step,
     );
-    return replied ? null : ModelCallsSpent(turn: call.place.turn);
+    return replied ? null : ModelCallsSpent(step: call.place.step);
   }
   return ModelCallOwed(after: reply.hash);
 }
@@ -799,7 +799,7 @@ sealed class StepOwed {
   const StepOwed();
 }
 
-/// Ask the model, at the loop's next turn: what it last said or was told,
+/// Ask the model, at the loop's next step: what it last said or was told,
 /// the entry [after], is the model's to answer.
 final class ModelCallOwed extends StepOwed {
   const ModelCallOwed({required this.after});
@@ -816,12 +816,12 @@ final class ToolActionOwed extends StepOwed {
 }
 
 /// The latest message has caused [maxModelCallsPerMessage] model calls, and
-/// [turn]'s reply still calls tools: say so, as [turn]'s reply, and ask
+/// [step]'s reply still calls tools: say so, as [step]'s reply, and ask
 /// nothing more until another message arrives.
 final class ModelCallsSpent extends StepOwed {
-  const ModelCallsSpent({required this.turn});
+  const ModelCallsSpent({required this.step});
 
-  final int turn;
+  final int step;
 }
 
 /// Ask the model to summarize the conversation up to and including the
@@ -835,7 +835,7 @@ final class SummaryOwed extends StepOwed {
 }
 
 /// The latest place this loop has proposed at in [history], or null for
-/// none: a restarted loop's next turn goes after it, never reusing a place.
+/// none: a restarted loop's next step goes after it, never reusing a place.
 PlaceInTrajectory? lastPlace(List<TrajectoryEvent> history) =>
     [
       for (final event in history)
