@@ -1,13 +1,11 @@
 /// A trajectory's history as the loop actually sees it, live: the user's
 /// own messages arrive as `event-admitted-to-mission` entries (the docking
-/// station's own kind), never as turns on the loop's chain. Only the
-/// loop's own turn-chain entries (still carrying `UserSaid`'s data, since
-/// [MessageSaid.node] IS one) are read by [followTrajectory]; this reads
+/// station's own kind), never on the loop's chain; the loop's own entries,
+/// its proposals and summary markers, are read off its chain; this reads
 /// both, merged in logbook order.
 ///
 /// A prior agent reply is read from the airlock's outcome of the model call
-/// that produced it ([SaidByAgent]), never from a turn: a loop writes no
-/// reply turn of its own.
+/// that produced it ([SaidByAgent]): a loop writes no reply of its own.
 ///
 /// A summary call (lib/src/history_compaction.dart) is a step of its own:
 /// its [HistorySummaryAsked] marker arrives as [SummaryAsked], its proposal
@@ -76,9 +74,8 @@ import 'package:is_tools_api/is_tools_api.dart' show OneActionTool;
 
 import 'history_compaction.dart'
     show HistorySummaryAsked, replyOverTheLine, requestWindow;
-import 'model_request_input.dart' show inputTurnOf;
+import 'kind_the_loop_writes.dart';
 import 'tool_calls.dart';
-import 'turn_envelope.dart';
 
 /// What [followTrajectoryHistory] hands on: each [TrajectoryEvent] in
 /// order, and one [CaughtUpWithTrajectory] once the backlog has been read.
@@ -95,8 +92,8 @@ final class CaughtUpWithTrajectory extends TrajectoryFeedItem {
 /// One event in a trajectory's history, in the order it actually happened:
 /// [SaidByUser] (an admitted message), [SaidByAgent] (the model's reply to
 /// a call the loop proposed), [FetchEnded] (a tool's fetch the loop
-/// proposed), [ActionProposed] (a proposal this loop wrote) or [TurnOnChain]
-/// (a turn the loop itself wrote).
+/// proposed), [ActionProposed] (a proposal this loop wrote) or
+/// [SummaryAsked] (a summary marker this loop wrote), among others.
 sealed class TrajectoryEvent extends TrajectoryFeedItem {
   const TrajectoryEvent({required this.hash});
 
@@ -247,21 +244,16 @@ final class TrajectoryRulesUnreadable extends TrajectoryEvent {
   final String why;
 }
 
-/// An entry the loop itself wrote on its own turn chain.
-final class TurnOnChain extends TrajectoryEvent {
-  const TurnOnChain({required super.hash, required this.turn});
-
-  final TurnEnvelope turn;
-}
-
-final _proposedKind = Kind.parse(ActionProposedByAgentLoop.kind)!;
+final _proposedKind = KindTheLoopWrites.actionProposed.kind;
+final _summaryAskedKind = KindTheLoopWrites.historySummaryAsked.kind;
 final _outcomeKind = Kind.parse(outcomeOfProposedActionKind)!;
 
 /// Every event on [chainRoot]'s trajectory, live, in logbook order: the
-/// loop's own turns (by the same chain-membership rule [followTrajectory]
-/// uses) and every `MessageSaid` the docking station admitted to this
-/// trajectory — trusting the feed's own scoping for the latter, since an
-/// admission is never chained onto the loop's turns at all. An admission
+/// loop's own summary markers (an entry belongs to the chain when its
+/// `previous` is already on it) and proposals, and every `MessageSaid` the
+/// docking station admitted to this trajectory — trusting the feed's own
+/// scoping for the latter, since an admission is never chained onto the
+/// loop's entries at all. An admission
 /// whose reading is not something said (a join, a change) is skipped: this
 /// loop has nothing to render for it yet.
 ///
@@ -274,12 +266,12 @@ final _outcomeKind = Kind.parse(outcomeOfProposedActionKind)!;
 /// [SummaryByAgent] when a [HistorySummaryAsked] marker named its step
 /// first. A proposal the airlock could not read as one is skipped.
 ///
-/// Built with [Stream.expand] rather than `async*`, for the same reason as
-/// [followTrajectory]: `expand` passes a cancel straight through to
-/// [LogbookReader.subscribe], which an `async*` wrapper would not.
+/// Built with [Stream.expand] rather than `async*`: an `async*` generator's
+/// own cancel waits for its next yield, which never comes while a live
+/// subscription is idle; `expand` passes a cancel straight through to
+/// [LogbookReader.subscribe].
 Stream<TrajectoryFeedItem> followTrajectoryHistory(
   LogbookReader reader, {
-  required Kind turnKind,
   required ObjectId chainRoot,
 }) {
   final onChain = <ObjectId>{chainRoot};
@@ -290,7 +282,7 @@ Stream<TrajectoryFeedItem> followTrajectoryHistory(
   // Each summary marker's step, to the last event it summarizes.
   final summariesAsked = <int, ObjectId>{};
   final kinds = {
-    turnKind,
+    _summaryAskedKind,
     DecisionEntryKind.eventAdmittedToMission,
     _proposedKind,
     _outcomeKind,
@@ -364,17 +356,15 @@ Stream<TrajectoryFeedItem> followTrajectoryHistory(
         ],
       };
     }
-    if (entry.kind == turnKind) {
+    if (entry.kind == _summaryAskedKind) {
       final belongs =
           entry.previous != null && onChain.contains(entry.previous);
       if (!belongs) return const [];
       onChain.add(entry.id);
-      final turn = TurnEnvelope.decode(entry.body);
-      if (HistorySummaryAsked.fromJson(turn.node) case final asked?) {
-        summariesAsked[asked.step] = asked.upTo;
-        return [SummaryAsked(hash: entry.id, asked: asked)];
-      }
-      return [TurnOnChain(hash: entry.id, turn: turn)];
+      final asked = HistorySummaryAsked.decode(entry.body);
+      if (asked == null) return const [];
+      summariesAsked[asked.step] = asked.upTo;
+      return [SummaryAsked(hash: entry.id, asked: asked)];
     }
     final decision = decodeDecision(entry.kind, entry.body);
     if (decision is! EventAdmittedToMission) return const [];
@@ -485,12 +475,6 @@ String _text(List<int> body) => utf8.decode(body, allowMalformed: true);
 /// exists. A reply goes where the call it answers was proposed, not
 /// where its outcome arrived, so a message admitted while the model was
 /// answering comes after that answer, as the model saw it.
-/// [TurnOnChain] goes through [inputTurnOf]'s own node-shape cases; since
-/// ReplyText turns are dead and no `UserSaid` ever arrives this way any
-/// more (it arrives as [SaidByUser] instead), nothing currently reaches
-/// this case — kept for whatever the loop's own chain ends up carrying.
-/// Throws [FormatException] for a [TurnOnChain] whose node shape it doesn't
-/// know.
 ///
 /// A reply that calls tools is followed by one answer per call, in the
 /// order it made them: its fetch's result, why it can't run, or that it was
@@ -535,7 +519,6 @@ List<ModelTurn> trajectoryInput(
         SummaryByAgent(:final reply) => [
           UserSaid('$_summaryLead${reply.text}'),
         ],
-        TurnOnChain(:final turn) => [inputTurnOf(turn)],
         ActionProposed() ||
         SaidByAgent() ||
         ModelCallRefused() ||
@@ -617,8 +600,7 @@ const _cutOffNote = '(This reply was cut off before it finished.)';
           FetchEnded() ||
           SummaryByAgent() ||
           SummaryAsked() ||
-          ActionProposed() ||
-          TurnOnChain():
+          ActionProposed():
         continue;
     }
   }
@@ -644,7 +626,6 @@ SaidByUser? unansweredTurn(List<TrajectoryEvent> history) {
           SummaryByAgent() ||
           SummaryAsked() ||
           ActionProposed() ||
-          TurnOnChain() ||
           TrajectoryStarted() ||
           TrajectoryRulesUnreadable():
         continue;
@@ -654,13 +635,11 @@ SaidByUser? unansweredTurn(List<TrajectoryEvent> history) {
 }
 
 /// The latest entry this loop wrote on its own chain that [history] holds:
-/// a proposal or a turn. A restarted loop's chain resumes after it.
+/// a proposal or a summary marker. A restarted loop's chain resumes after
+/// it.
 ObjectId? lastOwnEntry(List<TrajectoryEvent> history) => [
   for (final event in history)
-    if (event is ActionProposed ||
-        event is TurnOnChain ||
-        event is SummaryAsked)
-      event.hash,
+    if (event is ActionProposed || event is SummaryAsked) event.hash,
 ].lastOrNull;
 
 /// Whether every model call and fetch this loop has proposed has ended in

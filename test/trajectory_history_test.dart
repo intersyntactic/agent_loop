@@ -57,13 +57,14 @@ import 'package:is_tools_api/is_tools_api.dart'
     show Fetch, Input, OneActionTool;
 import 'package:test/test.dart';
 
+import 'loop_sender_table.dart';
+
 void main() {
   late Directory tmp;
   late LogbookService service;
   late client.LogbookWriter rawWriter;
   late LogbookReader reader;
   late String uid;
-  final turnKind = Kind.parse('turn')!;
   // Never checked, only well-formed: the service never reads this field
   // back as anything but an opaque hex string.
   final trajectoryUnderTest = client.ObjectId.of(
@@ -73,17 +74,17 @@ void main() {
   setUp(() async {
     tmp = Directory.systemTemp.createTempSync('agent_loop_history_test_');
     uid = Process.runSync('id', ['-u']).stdout.toString().trim();
-    final senderTable = SenderTable.parse(
-      Uint8List.fromList(
-        '$uid turn users-assigned-to-trajectory '
-                'event-admitted-to-mission event '
-                'action-proposed-by-agent-loop outcome-of-proposed-action\n'
-            .codeUnits,
-      ),
-    );
     service = await LogbookService.start(
       Logbook.open(Directory('${tmp.path}/logbook'))!,
-      senderTable,
+      loopSenderTable(
+        uid,
+        standIns: [
+          'users-assigned-to-trajectory',
+          'event-admitted-to-mission',
+          'event',
+          'outcome-of-proposed-action',
+        ],
+      ),
       File('${tmp.path}/logbook.sock'),
       readSocket: File('${tmp.path}/logbook.read.sock'),
     );
@@ -96,8 +97,8 @@ void main() {
     tmp.deleteSync(recursive: true);
   });
 
-  test('merges an admitted message with the loop\'s own turn, oldest '
-      'first, and renders both', () async {
+  test('merges an admitted message with the loop\'s own summary marker, '
+      'oldest first, and renders only the message', () async {
     final rootResult = await rawWriter.write(
       Kind.usersAssignedToTrajectory,
       Uint8List.fromList(
@@ -145,20 +146,16 @@ void main() {
 
     final chain = TrajectoryChain(
       writer: LogbookWriter('${tmp.path}/logbook.sock'),
-      kind: turnKind,
       tip: root,
     );
-    final turnHash = await chain.append({
-      'shape': 'UserSaid',
-      'author': 'teams:u1',
-      'source': 'm2',
-      'text': 'a loop-written turn',
-    }, const Own());
+    final markerHash = await chain.appendEntry(
+      KindTheLoopWrites.historySummaryAsked,
+      HistorySummaryAsked(step: 0, upTo: admittedHash).encode(),
+    );
 
     final items = <TrajectoryFeedItem>[];
     final sub = followTrajectoryHistory(
       reader,
-      turnKind: turnKind,
       chainRoot: root,
     ).listen(items.add);
     await Future<void>.delayed(const Duration(milliseconds: 200));
@@ -175,12 +172,15 @@ void main() {
       (found[0] as SaidByUser).address,
       AddressInExternalSystem.parse('teams:c1'),
     );
-    expect(found[1], isA<TurnOnChain>());
-    expect((found[1] as TurnOnChain).hash, turnHash);
+    expect(
+      found[1],
+      isA<SummaryAsked>()
+          .having((s) => s.hash, 'hash', markerHash)
+          .having((s) => s.asked.upTo, 'upTo', admittedHash),
+    );
 
     expect(_turnsOf(found), [
       {'kind': 'user', 'text': 'hey are you there'},
-      {'kind': 'user', 'text': 'a loop-written turn'},
     ]);
   });
 
@@ -255,7 +255,6 @@ void main() {
       final items = <TrajectoryFeedItem>[];
       final sub = followTrajectoryHistory(
         reader,
-        turnKind: turnKind,
         chainRoot: root,
       ).listen(items.add);
       await Future<void>.delayed(const Duration(milliseconds: 200));
@@ -334,7 +333,6 @@ void main() {
     final root = (rootResult as client.Written).entry;
     final chain = TrajectoryChain(
       writer: LogbookWriter('${tmp.path}/logbook.sock'),
-      kind: turnKind,
       tip: root,
     );
 
@@ -393,16 +391,15 @@ void main() {
     await answer(2, const NothingRan('no sign-in'));
     final cutHash = await answer(3, const Ran(CutOffReply(text: 'half an')));
     // A summary call: its marker on the chain first, then its own step.
-    await chain.append(
-      HistorySummaryAsked(step: 4, upTo: ranHash).toJson(),
-      const Own(),
+    await chain.appendEntry(
+      KindTheLoopWrites.historySummaryAsked,
+      HistorySummaryAsked(step: 4, upTo: ranHash).encode(),
     );
     await answer(4, const Ran(FinishedReply(text: 'they asked where')));
 
     final items = <TrajectoryFeedItem>[];
     final sub = followTrajectoryHistory(
       reader,
-      turnKind: turnKind,
       chainRoot: root,
     ).listen(items.add);
     await Future<void>.delayed(const Duration(milliseconds: 200));
@@ -434,7 +431,6 @@ void main() {
                   'up to ${upTo == ranHash ? 'ran' : '?'}',
             FetchEnded() ||
             SaidByUser() ||
-            TurnOnChain() ||
             TrajectoryStarted() ||
             TrajectoryRulesUnreadable() => '${e.runtimeType}',
           },
@@ -495,7 +491,6 @@ void main() {
     final root = (rootResult as client.Written).entry;
     final chain = TrajectoryChain(
       writer: LogbookWriter('${tmp.path}/logbook.sock'),
-      kind: turnKind,
       tip: root,
     );
     final returned = StreamController<ReturnedResult>();
@@ -561,7 +556,6 @@ void main() {
     final items = <TrajectoryFeedItem>[];
     final sub = followTrajectoryHistory(
       reader,
-      turnKind: turnKind,
       chainRoot: root,
     ).listen(items.add);
     await Future<void>.delayed(const Duration(milliseconds: 200));
@@ -583,7 +577,6 @@ void main() {
             SummaryByAgent() ||
             SummaryAsked() ||
             SaidByUser() ||
-            TurnOnChain() ||
             TrajectoryStarted() ||
             TrajectoryRulesUnreadable() => '${e.runtimeType}',
           },

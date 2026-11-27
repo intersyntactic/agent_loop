@@ -1,12 +1,11 @@
-/// Each trajectory's own agent loop: it writes the conversation's turns
-/// straight to the logbook and proposes each model call through it as a
-/// [ProposesAtNextPlace]; the airlock makes the call.
+/// Each trajectory's own agent loop: it writes its model requests and
+/// proposals straight to the logbook and proposes each model call through
+/// it as a [ProposesAtNextPlace]; the airlock makes the call.
 ///
-/// [TrajectoryChain] is one trajectory's sequence of turns, written to the
-/// logbook (the live logbook service, `is_logbook`), each in a
-/// [TurnEnvelope] naming its [TurnProvenance] — a turn's own id is its
-/// logbook entry hash, read back as that same id, not a second name derived
-/// from it. [findTrajectoryRoot] and [followTrajectory] are its read side.
+/// [TrajectoryChain] is one trajectory's sequence of the loop's own
+/// entries in the logbook (the live logbook service, `is_logbook`), each of
+/// a [KindTheLoopWrites]. An entry's id is its logbook entry hash.
+/// [findTrajectoryRoot] and [followTrajectoryHistory] are its read side.
 ///
 /// [LogbookWriter] speaks `is_logbook_client`'s write socket:
 /// [TrajectoryChain] sends its entries through it.
@@ -21,9 +20,9 @@
 library;
 
 export 'src/history_compaction.dart';
+export 'src/kind_the_loop_writes.dart';
 export 'src/logbook_writer.dart';
 export 'src/loop_exit.dart';
-export 'src/model_request_input.dart';
 export 'src/proposes_at_next_place.dart';
 export 'src/reply.dart';
 export 'src/tool_action.dart';
@@ -33,4 +32,3 @@ export 'src/trajectory_history.dart';
 export 'src/trajectory_model_request.dart';
 export 'src/trajectory_proposal_link.dart';
 export 'src/trajectory_results.dart';
-export 'src/turn_envelope.dart';

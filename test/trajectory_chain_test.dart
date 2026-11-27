@@ -1,5 +1,5 @@
-// Proves findTrajectoryRoot, followTrajectory and TrajectoryChain against a
-// real is_logbook LogbookService over real Unix sockets.
+// Proves findTrajectoryRoot and TrajectoryChain against a real is_logbook
+// LogbookService over real Unix sockets.
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
@@ -7,9 +7,14 @@ import 'dart:typed_data';
 import 'package:agent_loop/agent_loop.dart';
 import 'package:is_logbook/is_logbook.dart';
 import 'package:is_logbook/service.dart';
-import 'package:is_logbook_client/is_logbook_client.dart' show LogbookReader;
+import 'package:is_logbook_client/is_logbook_client.dart'
+    show CaughtUp, Entry, LogbookReader;
 import 'package:is_logbook_client/is_logbook_client.dart' as client;
 import 'package:test/test.dart';
+
+import 'loop_sender_table.dart';
+
+const _noteKind = KindTheLoopWrites.modelRequestPiece;
 
 void main() {
   late Directory tmp;
@@ -17,7 +22,6 @@ void main() {
   late client.LogbookWriter rawWriter;
   late LogbookReader reader;
   late String uid;
-  final turnKind = Kind.parse('turn')!;
   // Never checked, only well-formed: the service never reads this field
   // back as anything but an opaque hex string.
   final trajectoryUnderTest = client.ObjectId.of(
@@ -27,12 +31,9 @@ void main() {
   setUp(() async {
     tmp = Directory.systemTemp.createTempSync('agent_loop_trajectory_test_');
     uid = Process.runSync('id', ['-u']).stdout.toString().trim();
-    final senderTable = SenderTable.parse(
-      Uint8List.fromList('$uid turn users-assigned-to-trajectory\n'.codeUnits),
-    );
     service = await LogbookService.start(
       Logbook.open(Directory('${tmp.path}/logbook'))!,
-      senderTable,
+      loopSenderTable(uid, standIns: ['users-assigned-to-trajectory']),
       File('${tmp.path}/logbook.sock'),
       readSocket: File('${tmp.path}/logbook.read.sock'),
     );
@@ -65,6 +66,27 @@ void main() {
     return (result as client.Written).entry;
   }
 
+  Future<client.ObjectId> note(TrajectoryChain chain, String text) =>
+      chain.appendEntry(_noteKind, utf8.encode(text));
+
+  // Every note on the chain descending from [root], in logbook order.
+  Future<List<client.ObjectId>> chainFrom(client.ObjectId root) async {
+    final onChain = <client.ObjectId>{root};
+    final found = <client.ObjectId>[];
+    await for (final item in reader.subscribe(kinds: {_noteKind.kind})) {
+      switch (item) {
+        case Entry(:final id, :final previous?) when onChain.contains(previous):
+          onChain.add(id);
+          found.add(id);
+        case Entry():
+          continue;
+        case CaughtUp():
+          return found;
+      }
+    }
+    return found;
+  }
+
   test('finds the latest assignment naming this loop user', () async {
     final root = await assign(
       trajectory: trajectoryUnderTest,
@@ -92,55 +114,6 @@ void main() {
     );
   });
 
-  test('follows only this trajectory\'s own turns, live, with their '
-      'hashes', () async {
-    final root = await assign(
-      trajectory: trajectoryUnderTest,
-      mission: client.ObjectId.of(Uint8List.fromList('mission-c'.codeUnits))
-          .hex,
-      loopUser: uid,
-      suit: '1002',
-    );
-
-    // An unrelated turn entry, rooting a chain of its own (real ownership
-    // rules only gate an entry naming a previous on an owned chain, so this
-    // needs no second uid to construct): must never appear in the first
-    // trajectory's feed even though it shares the same turn kind.
-    await rawWriter.write(
-      turnKind,
-      utf8.encode(jsonEncode({'shape': 'Note', 'text': 'other'})),
-    );
-
-    final chain = TrajectoryChain(
-      writer: LogbookWriter('${tmp.path}/logbook.sock'),
-      kind: turnKind,
-      tip: root,
-    );
-    final first = await chain.append({
-      'shape': 'UserSaid',
-      'text': 'hi',
-    }, const Own());
-    final second = await chain.append({
-      'shape': 'ReplyText',
-      'text': 'hello',
-    }, const Own());
-
-    final found = <(client.ObjectId, TurnEnvelope)>[];
-    final sub = followTrajectory(
-      reader,
-      kind: turnKind,
-      chainRoot: root,
-    ).listen(found.add);
-    await Future<void>.delayed(const Duration(milliseconds: 200));
-    await sub.cancel();
-
-    expect(found, hasLength(2));
-    expect(found[0].$1, first);
-    expect(found[0].$2.node['text'], 'hi');
-    expect(found[1].$1, second);
-    expect(found[1].$2.node['text'], 'hello');
-  });
-
   test('a restarted loop appends after its own last entry, not its root; '
       'a chain that was not resumed is still refused', () async {
     final root = await assign(
@@ -153,60 +126,35 @@ void main() {
     final writer = LogbookWriter('${tmp.path}/logbook.sock');
 
     // The first run: two entries after the root.
-    final firstRun = TrajectoryChain(writer: writer, kind: turnKind, tip: root);
-    await firstRun.append({'shape': 'Note', 'text': 'turn 1'}, const Own());
-    final lastOfFirstRun = await firstRun.append({
-      'shape': 'Note',
-      'text': 'turn 1 post',
-    }, const Own());
+    final firstRun = TrajectoryChain(writer: writer, tip: root);
+    await note(firstRun, 'step 1');
+    final lastOfFirstRun = await note(firstRun, 'step 1 post');
 
     // Starting again from the root without resuming is refused, naming the
     // real tip.
-    final notResumed = TrajectoryChain(
-      writer: writer,
-      kind: turnKind,
-      tip: root,
-    );
+    final notResumed = TrajectoryChain(writer: writer, tip: root);
     await expectLater(
-      notResumed.append({'shape': 'Note', 'text': 'x'}, const Own()),
+      note(notResumed, 'x'),
       throwsA(
         isA<LogbookWriteRefused>().having((e) => e.tip, 'tip', lastOfFirstRun),
       ),
     );
 
     // The restarted run follows its own last entry, then tracks its own tip.
-    final restarted = TrajectoryChain.resumed(
-      writer: writer,
-      kind: turnKind,
-      root: root,
-    );
-    final turn2 = await restarted.append({
-      'shape': 'Note',
-      'text': 'turn 2',
-    }, const Own());
-    final turn2Post = await restarted.append({
-      'shape': 'Note',
-      'text': 'turn 2 post',
-    }, const Own());
+    final restarted = TrajectoryChain.resumed(writer: writer, root: root);
+    final step2 = await note(restarted, 'step 2');
+    final step2Post = await note(restarted, 'step 2 post');
 
-    final found = <client.ObjectId>[];
-    final sub = followTrajectory(
-      reader,
-      kind: turnKind,
-      chainRoot: root,
-    ).listen((e) => found.add(e.$1));
-    await Future<void>.delayed(const Duration(milliseconds: 200));
-    await sub.cancel();
-
-    expect(found.skip(2), [turn2, turn2Post]);
+    final found = await chainFrom(root);
+    expect(found.skip(2), [step2, step2Post]);
     expect(found[1], lastOfFirstRun);
   });
 
   test('a restarted loop whose first entry repeats an earlier one exactly '
       'still appends after its own last entry', () async {
     // The live case: the system prompt piece is the same bytes after the
-    // same root on every turn's first request, so the logbook already holds
-    // it and says so before it checks the tip.
+    // same root on every first request, so the logbook already holds it and
+    // says so before it checks the tip.
     final root = await assign(
       trajectory: trajectoryUnderTest,
       mission: client.ObjectId.of(Uint8List.fromList('mission-f'.codeUnits))
@@ -215,36 +163,18 @@ void main() {
       suit: '1002',
     );
     final writer = LogbookWriter('${tmp.path}/logbook.sock');
-    const systemPrompt = {'shape': 'Note', 'text': 'the system prompt'};
+    const systemPrompt = 'the system prompt';
 
-    final firstRun = TrajectoryChain(writer: writer, kind: turnKind, tip: root);
-    await firstRun.append(systemPrompt, const Own());
-    await firstRun.append({'shape': 'Note', 'text': 'request 1'}, const Own());
-    final proposal = await firstRun.append({
-      'shape': 'Note',
-      'text': 'proposal 1',
-    }, const Own());
+    final firstRun = TrajectoryChain(writer: writer, tip: root);
+    await note(firstRun, systemPrompt);
+    await note(firstRun, 'request 1');
+    final proposal = await note(firstRun, 'proposal 1');
 
-    final restarted = TrajectoryChain.resumed(
-      writer: writer,
-      kind: turnKind,
-      root: root,
-    );
-    await restarted.append(systemPrompt, const Own());
-    final request2 = await restarted.append({
-      'shape': 'Note',
-      'text': 'request 2',
-    }, const Own());
+    final restarted = TrajectoryChain.resumed(writer: writer, root: root);
+    await note(restarted, systemPrompt);
+    final request2 = await note(restarted, 'request 2');
 
-    final found = <client.ObjectId>[];
-    final sub = followTrajectory(
-      reader,
-      kind: turnKind,
-      chainRoot: root,
-    ).listen((e) => found.add(e.$1));
-    await Future<void>.delayed(const Duration(milliseconds: 200));
-    await sub.cancel();
-
+    final found = await chainFrom(root);
     expect(found.last, request2);
     expect(found[found.length - 2], proposal);
   });
@@ -260,23 +190,13 @@ void main() {
         suit: '1002',
       );
       final writer = LogbookWriter('${tmp.path}/logbook.sock');
-      final firstRun = TrajectoryChain(
-        writer: writer,
-        kind: turnKind,
-        tip: root,
-      );
-      final last = await firstRun.append({
-        'shape': 'Note',
-        'text': 'turn 1',
-      }, const Own());
+      final firstRun = TrajectoryChain(writer: writer, tip: root);
+      final last = await note(firstRun, 'step 1');
 
-      final restarted = TrajectoryChain.resumed(
-        writer: writer,
-        kind: turnKind,
-        root: root,
-      )..resumeAfter(last);
+      final restarted = TrajectoryChain.resumed(writer: writer, root: root)
+        ..resumeAfter(last);
       expect(restarted.tip, last);
-      await restarted.append({'shape': 'Note', 'text': 'turn 2'}, const Own());
+      await note(restarted, 'step 2');
 
       // Once confirmed, a later hint changes nothing.
       restarted.resumeAfter(root);
@@ -294,24 +214,16 @@ void main() {
       suit: '1002',
     );
     final writer = LogbookWriter('${tmp.path}/logbook.sock');
-    final resumed = TrajectoryChain.resumed(
-      writer: writer,
-      kind: turnKind,
-      root: root,
-    );
-    await resumed.append({'shape': 'Note', 'text': 'mine'}, const Own());
+    final resumed = TrajectoryChain.resumed(writer: writer, root: root);
+    await note(resumed, 'mine');
 
     // Another writer moves the tip on behind this chain's back: after its
     // first append, a resumed chain refuses rather than following it.
-    final other = TrajectoryChain(
-      writer: writer,
-      kind: turnKind,
-      tip: resumed.tip,
-    );
-    await other.append({'shape': 'Note', 'text': 'not mine'}, const Own());
+    final other = TrajectoryChain(writer: writer, tip: resumed.tip);
+    await note(other, 'not mine');
 
     await expectLater(
-      resumed.append({'shape': 'Note', 'text': 'mine again'}, const Own()),
+      note(resumed, 'mine again'),
       throwsA(isA<LogbookWriteRefused>()),
     );
   });

@@ -6,7 +6,7 @@
 /// its own assignment in the logbook rather than being told its trajectory
 /// (infra's polkit can start only named template units, so loop_launcher
 /// can pass no per-trajectory argument), follows its trajectory's history
-/// live (the docking station's admissions and its own turn chain, merged),
+/// live (the docking station's admissions and its own chain, merged),
 /// and, whenever the turn rule says the agent should answer, records a
 /// model request and proposes [AskTheModel] through the logbook, naming it.
 ///
@@ -71,7 +71,7 @@ import 'package:is_airlock_api/is_airlock_api.dart'
 import 'package:is_flight_rules/is_flight_rules.dart'
     show WhatMayLeaveThisMachine;
 import 'package:is_logbook_client/is_logbook_client.dart'
-    show Kind, LogbookReader, ObjectId;
+    show LogbookReader, ObjectId;
 import 'package:is_shapes/is_shapes.dart' show EntryId;
 import 'package:is_tools_api/is_tools_api.dart' show OneActionTool;
 
@@ -80,8 +80,6 @@ import 'package:is_tools_api/is_tools_api.dart' show OneActionTool;
 /// The tools travel in the request, not here.
 const _placeholderSystemPrompt =
     'You are the agent in this conversation. Reply in plain text.';
-
-const _turnKind = 'turn';
 
 Future<void> main(List<String> args) async {
   final options = _Options.parse(args);
@@ -121,12 +119,7 @@ Future<Never> _run(_Options options) async {
   stdout.writeln('agent_loop: assigned root=${root.hex}');
 
   final writer = LogbookWriter(options.logbookWrite);
-  final turnKind = Kind.parse(_turnKind)!;
-  final chain = TrajectoryChain.resumed(
-    writer: writer,
-    kind: turnKind,
-    root: root,
-  );
+  final chain = TrajectoryChain.resumed(writer: writer, root: root);
   final link = TrajectoryProposalLink(
     chain: chain,
     returned: followResults(reader),
@@ -288,9 +281,9 @@ Future<Never> _run(_Options options) async {
     nextStep = step + 1;
     latestOwn = ProposedForTheModelCall.at(step);
     if (markedStep == null) {
-      await chain.append(
-        HistorySummaryAsked(step: step, upTo: upTo).toJson(),
-        const Own(),
+      await chain.appendEntry(
+        KindTheLoopWrites.historySummaryAsked,
+        HistorySummaryAsked(step: step, upTo: upTo).encode(),
       );
     }
     final requestHash = await recordModelRequestOnTrajectory(
@@ -368,11 +361,7 @@ Future<Never> _run(_Options options) async {
   // answers whatever is owed after each event.
   Future<Never> follow() async {
     var caughtUp = false;
-    await for (final item in followTrajectoryHistory(
-      reader,
-      turnKind: turnKind,
-      chainRoot: root,
-    )) {
+    await for (final item in followTrajectoryHistory(reader, chainRoot: root)) {
       switch (item) {
         case CaughtUpWithTrajectory():
           if (caughtUp) continue;
