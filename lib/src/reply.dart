@@ -17,6 +17,7 @@ import 'package:is_effects/is_effects.dart'
         Exited,
         Killed,
         ProposedRequest,
+        WebResponse,
         decodeProposedRequest;
 import 'package:is_conversation_reply_vocabulary/is_conversation_reply_vocabulary.dart'
     show RepliesInSlackConversation, RepliesUnderWebAddress, ReplyEndpoint;
@@ -39,7 +40,8 @@ AddressPrefix? replyAddressFor(ReplyEndpoint endpoint) => switch (endpoint) {
 /// run on it and prints the requests as one JSON array of is_effects'
 /// `encodeProposedRequest`; those are then sent in order. Done with how
 /// many were sent; [Failed] when either action is refused, the drawing
-/// fails, or what it printed is not requests. [step] and [usage], how full
+/// fails, what it printed is not requests, or the destination refuses one
+/// ([sentOrRefused]). [step] and [usage], how full
 /// the model's context is when the call reported it, go to the drawing
 /// for the message's footer, and [trajectory] to what its Close closes.
 Action<int> replyActions({
@@ -63,7 +65,7 @@ Action<int> replyActions({
     Exited(exitCode: 0, :final stdout) => switch (requestsIn(stdout)) {
       (requests: final requests?, why: _) => Program.makeWebRequests.runOrFail(
         requests,
-        then: (responses) => Done(responses.length),
+        then: sentOrRefused,
       ),
       (requests: null, :final why) => Failed(
         '${drawing.name} printed no requests: $why',
@@ -75,6 +77,22 @@ Action<int> replyActions({
     Killed(:final why) => Failed('${drawing.name} was killed: $why'),
   },
 );
+
+/// Done with how many [responses] there are when the destination took every
+/// request (a 2xx status); otherwise [Failed], naming the first it refused,
+/// its status and why. The web driver returns a refusal as a response, so
+/// the action running is not the reply arriving.
+Result<int> sentOrRefused(List<WebResponse> responses) {
+  for (final (i, response) in responses.indexed) {
+    if (response.status < 200 || response.status > 299) {
+      return Failed(
+        'request $i was refused with ${response.status}: '
+        '${response.refusedBecause ?? 'no reason given'}',
+      );
+    }
+  }
+  return Done(responses.length);
+}
 
 /// How a drawing is run for [text]: the endpoint, sign-in, trajectory,
 /// step and context as flags, and the text on its stdin. The drawings
