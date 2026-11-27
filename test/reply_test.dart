@@ -84,8 +84,11 @@ final class _FakeLink implements ProposesActionsThroughTheLogbook {
 Object? _drawn(ExecResult result) =>
     encodeOutcome(Ran(result), encodeExecResult);
 
-Object? _sent(int count) => encodeOutcome(
-  Ran([for (var i = 0; i < count; i++) const WebResponse(status: 201)]),
+Object? _sent(int count) =>
+    _answered([for (var i = 0; i < count; i++) const WebResponse(status: 201)]);
+
+Object? _answered(List<WebResponse> responses) => encodeOutcome(
+  Ran(responses),
   (List<WebResponse> rs) => [for (final r in rs) encodeWebResponse(r)],
 );
 
@@ -195,6 +198,41 @@ void main() {
         [ProposedForTheReply.at(4, 0), ProposedForTheReply.at(4, 1)],
       );
       expect(link.proposals.first.program, _drawing);
+    });
+
+    test('a request the destination refuses is the reply failing, with its '
+        'status and why', () async {
+      final link = _FakeLink([
+        (_) => _drawn(
+          Exited(0, stdout: jsonEncode([_request, _request]), stderr: ''),
+        ),
+        (_) => _answered(const [
+          WebResponse(status: 201),
+          WebResponse(status: 403, refusedBecause: 'bot not in conversation'),
+        ]),
+      ]);
+
+      final result = await runToEnd(
+        replyActions(
+          drawing: _drawing,
+          text: 'hi',
+          usage: null,
+          replyEndpoint: _endpoint,
+          signIn: _signIn,
+          trajectory: _trajectory,
+          step: 4,
+        ),
+        ProposesAtNextPlace.forTheReply(link, step: 4),
+      );
+
+      expect(
+        result,
+        isA<Failed>().having(
+          (f) => f.why,
+          'why',
+          allOf(contains('request 1'), contains('403'), contains('bot not in')),
+        ),
+      );
     });
 
     test('a drawing that exits nonzero sends nothing', () async {
