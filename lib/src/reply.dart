@@ -41,7 +41,7 @@ AddressPrefix? replyAddressFor(ReplyEndpoint endpoint) => switch (endpoint) {
 /// `encodeProposedRequest`; those are then sent in order. Done with how
 /// many were sent; [Failed] when either action is refused, the drawing
 /// fails, what it printed is not requests, or the destination refuses one
-/// ([sentOrRefused]). [step] and [usage], how full
+/// ([sentOrRefused]). [turn], [step] and [usage], how full
 /// the model's context is when the call reported it, go to the drawing
 /// for the message's footer, and [trajectory] to what its Close closes.
 Action<int> replyActions({
@@ -51,6 +51,7 @@ Action<int> replyActions({
   required AddressPrefix replyEndpoint,
   required SignIn signIn,
   required TrajectoryId trajectory,
+  required int? turn,
   required int step,
 }) => drawing.runOrFail(
   drawingArgs(
@@ -59,6 +60,7 @@ Action<int> replyActions({
     replyEndpoint: replyEndpoint,
     signIn: signIn,
     trajectory: trajectory,
+    turn: turn,
     step: step,
   ),
   then: (ExecResult drawn) => switch (drawn) {
@@ -95,14 +97,17 @@ Result<int> sentOrRefused(List<WebResponse> responses) {
 }
 
 /// How a drawing is run for [text]: the endpoint, sign-in, trajectory,
-/// step and context as flags, and the text on its stdin. The drawings
-/// still name the step's flag `--turn`.
+/// turn (when known), step and context as flags, and the text on its stdin.
+/// Both counts start at 0; the drawing shows them from 1. `--step` is
+/// always sent, so a drawing reads `--turn` as the turn, never as the step
+/// an older loop sent under that name.
 Args drawingArgs({
   required String text,
   required ModelUsage? usage,
   required AddressPrefix replyEndpoint,
   required SignIn signIn,
   required TrajectoryId trajectory,
+  required int? turn,
   required int step,
 }) => Args([
   '--reply-endpoint',
@@ -111,7 +116,8 @@ Args drawingArgs({
   signIn.name,
   '--trajectory',
   trajectory.hex,
-  '--turn',
+  if (turn != null) ...['--turn', '$turn'],
+  '--step',
   '$step',
   if (usage != null) ...['--context-tokens', '${usage.context}'],
   if (usage?.contextWindow case final window?) ...[

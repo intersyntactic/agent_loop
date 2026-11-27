@@ -388,6 +388,32 @@ void main() {
     });
   });
 
+  group('turnOf', () {
+    final history = [
+      _user('u1'),
+      _proposed('p0', 0),
+      _agent('a0', 'p0', calls: _callsListDocuments),
+      _proposed('p1', 1),
+      _agent('a1', 'p1'),
+      _user('aside', startsTurn: false),
+      _user('u2'),
+      _proposed('p2', 2),
+    ];
+
+    test('counts the messages that start a turn before the step\'s model '
+        'call, from 0', () {
+      expect(
+        [turnOf(history, 0), turnOf(history, 1), turnOf(history, 2)],
+        [0, 0, 1],
+      );
+    });
+
+    test('is null for a step with no model call, or none before it', () {
+      expect(turnOf(history, 3), isNull);
+      expect(turnOf([_proposed('p0', 0)], 0), isNull);
+    });
+  });
+
   group('trajectoryInput shortens earlier turns\' tool results', () {
     // About 300 tokens, over the floor.
     final longText = 'x' * 1200;

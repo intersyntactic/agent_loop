@@ -691,6 +691,21 @@ const _cutOffNote = '(This reply was cut off before it finished.)';
   return (model: null, why: 'no admission started it under rules');
 }
 
+/// The turn [step] belongs to, counted from 0: how many messages that
+/// start a turn came before [step]'s model call, less one. Null when no
+/// such message came first, or [step] has no model call in [history].
+int? turnOf(List<TrajectoryEvent> history, int step) {
+  final call = history.indexWhere(
+    (e) => e is ActionProposed && e.place == ProposedForTheModelCall.at(step),
+  );
+  if (call < 0) return null;
+  final started = history
+      .take(call)
+      .where((e) => e is SaidByUser && e.startsTurn)
+      .length;
+  return started == 0 ? null : started - 1;
+}
+
 /// The message a loop started on [history] still owes an answer: the
 /// latest one that starts a turn, unless this loop has proposed a model
 /// call after it. Null when every such message was answered, or there is
