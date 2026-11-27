@@ -3,7 +3,7 @@
 /// this loop, read once.
 ///
 /// Built with [Stream.expand] rather than `async*`, for the same reason as
-/// [followTrajectory]: `expand` passes a cancel straight through to
+/// [followTrajectoryHistory]: `expand` passes a cancel straight through to
 /// [LogbookReader.subscribe], which an `async*` wrapper would not.
 library;
 

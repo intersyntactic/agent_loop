@@ -388,6 +388,108 @@ void main() {
     });
   });
 
+  group('turnOf', () {
+    final history = [
+      _user('u1'),
+      _proposed('p0', 0),
+      _agent('a0', 'p0', calls: _callsListDocuments),
+      _proposed('p1', 1),
+      _agent('a1', 'p1'),
+      _user('aside', startsTurn: false),
+      _user('u2'),
+      _proposed('p2', 2),
+    ];
+
+    test('counts the messages that start a turn before the step\'s model '
+        'call, from 0', () {
+      expect(
+        [turnOf(history, 0), turnOf(history, 1), turnOf(history, 2)],
+        [0, 0, 1],
+      );
+    });
+
+    test('is null for a step with no model call, or none before it', () {
+      expect(turnOf(history, 3), isNull);
+      expect(turnOf([_proposed('p0', 0)], 0), isNull);
+    });
+  });
+
+  group('trajectoryInput shortens earlier turns\' tool results', () {
+    // About 300 tokens, over the floor.
+    final longText = 'x' * 1200;
+    const stub =
+        '[Not repeated: in an earlier turn, list_documents at step 0 '
+        'returned about 300 tokens. Call list_documents again if you need '
+        'it.]';
+
+    List<TrajectoryEvent> earlierTurn(ToolResult result) => [
+      _user('u1'),
+      _proposed('p0', 0),
+      _agent('a0', 'p0', calls: _callsListDocuments),
+      _fetch('f0', 0),
+      _fetched(result, 'f0'),
+      _proposed('p1', 1),
+      _agent('a1', 'p1'),
+    ];
+
+    test('a long result the model was sent in an earlier turn goes as a '
+        'stub; the current turn\'s goes whole', () {
+      final input = trajectoryInput([
+        ...earlierTurn(ToolRan(longText)),
+        _user('u2'),
+        _proposed('p2', 2),
+        _agent('a2', 'p2', calls: _callsListDocuments),
+        _fetch('f2', 2),
+        _fetched(ToolRan(longText), 'f2'),
+      ], tools: _tools);
+
+      expect(
+        [for (final t in input) _show(t)],
+        [
+          'user:u1',
+          'calls:toolu_1 list_documents',
+          'answer:toolu_1 ran $stub',
+          'agent:a1',
+          'user:u2',
+          'calls:toolu_1 list_documents',
+          'answer:toolu_1 ran $longText',
+        ],
+      );
+    });
+
+    test('a long failure goes as a stub that still says it failed', () {
+      final input = trajectoryInput([
+        ...earlierTurn(ToolFailed(longText)),
+        _user('u2'),
+      ], tools: _tools);
+
+      expect(_show(input[2]), 'answer:toolu_1 failed $stub');
+    });
+
+    test('a result under the floor goes whole', () {
+      final input = trajectoryInput([
+        ...earlierTurn(_threeFiles),
+        _user('u2'),
+      ], tools: _tools);
+
+      expect(_show(input[2]), 'answer:toolu_1 ran 3 files');
+    });
+
+    test('a result that ended after a new message, before any model call '
+        'saw it, goes whole', () {
+      final input = trajectoryInput([
+        _user('u1'),
+        _proposed('p0', 0),
+        _agent('a0', 'p0', calls: _callsListDocuments),
+        _fetch('f0', 0),
+        _user('u2'),
+        _fetched(ToolRan(longText), 'f0'),
+      ], tools: _tools);
+
+      expect(_show(input[2]), 'answer:toolu_1 ran $longText');
+    });
+  });
+
   group('trajectoryInput with tools', () {
     test('a tool call\'s answer follows the call, even when a message '
         'arrived before it ended', () {

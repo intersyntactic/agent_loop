@@ -5,7 +5,6 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-import 'dart:typed_data';
 
 import 'package:agent_loop/agent_loop.dart';
 import 'package:is_airlock_api/is_airlock_api.dart'
@@ -17,6 +16,8 @@ import 'package:is_logbook_client/is_logbook_client.dart'
 import 'package:is_logbook_client/is_logbook_client.dart' as client;
 import 'package:is_shapes/is_shapes.dart' show EntryId;
 import 'package:test/test.dart';
+
+import 'loop_sender_table.dart';
 
 String _proposal(int step) => jsonEncode({
   'place': ProposedForTheModelCall.at(step).toJson(),
@@ -32,23 +33,21 @@ void main() {
   late Directory tmp;
   late LogbookService service;
   late client.ObjectId root;
-  final turnKind = Kind.parse('turn')!;
+  // Stands in for the assignment a chain starts from; nothing here reads it.
+  final rootKind = Kind.parse('test-root')!;
   final proposedKind = Kind.parse('action-proposed-by-agent-loop')!;
 
   setUp(() async {
     tmp = Directory.systemTemp.createTempSync('agent_loop_proposal_link_test_');
     final uid = Process.runSync('id', ['-u']).stdout.toString().trim();
-    final senderTable = SenderTable.parse(
-      Uint8List.fromList('$uid turn action-proposed-by-agent-loop\n'.codeUnits),
-    );
     service = await LogbookService.start(
       Logbook.open(Directory('${tmp.path}/logbook'))!,
-      senderTable,
+      loopSenderTable(uid, standIns: ['test-root']),
       File('${tmp.path}/logbook.sock'),
       readSocket: File('${tmp.path}/logbook.read.sock'),
     );
     final written = await client.LogbookWriter('${tmp.path}/logbook.sock')
-        .write(turnKind, utf8.encode('root'));
+        .write(rootKind, utf8.encode('root'));
     root = (written as client.Written).entry;
   });
 
@@ -59,7 +58,6 @@ void main() {
 
   TrajectoryChain chainFromRoot() => TrajectoryChain(
     writer: LogbookWriter('${tmp.path}/logbook.sock'),
-    kind: turnKind,
     tip: root,
   );
 

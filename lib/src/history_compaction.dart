@@ -4,13 +4,15 @@
 /// place of everything it covers.
 ///
 /// The summary call is a step of its own (one model call and what it
-/// caused, which is_airlock_api still counts as its `turn`): the model call
+/// caused): the model call
 /// at [ProposedForTheModelCall], with no intents and no reply. It sends the
 /// same system prompt, tools and input as the answer that crossed the line,
 /// plus that answer's reply and one final user item asking for the
 /// summary, so the provider's cache of that prefix carries over. Its
 /// outcome entry is the summary; nothing else holds it.
 library;
+
+import 'dart:convert' show jsonEncode, utf8;
 
 import 'package:checked_json/checked_json.dart' show JsonObject;
 import 'package:is_airlock_api/is_airlock_api.dart'
@@ -32,7 +34,10 @@ final class HistorySummaryAsked {
 
   static const shapeName = 'HistorySummaryAsked';
 
-  /// Counted from 0: the number is_airlock_api's places call `turn`.
+  /// The logbook kind its entry is written as.
+  static const kind = 'history-summary-asked';
+
+  /// Counted from 0: the number is_airlock_api's places call `step`.
   final int step;
   final ObjectId upTo;
 
@@ -41,6 +46,18 @@ final class HistorySummaryAsked {
     'step': step,
     'upTo': upTo.hex,
   };
+
+  /// Its entry's body, as a [kind] entry carries it.
+  List<int> encode() => utf8.encode(jsonEncode(toJson()));
+
+  /// A [kind] entry's [body] as one; null when it doesn't read as one.
+  static HistorySummaryAsked? decode(List<int> body) {
+    try {
+      return fromJson(JsonObject.decode(utf8.decode(body)).asUncheckedMap());
+    } on FormatException {
+      return null;
+    }
+  }
 
   /// [node] as one, as [toJson] wrote it; null for any other node.
   static HistorySummaryAsked? fromJson(Map<String, Object?> node) {
@@ -97,8 +114,7 @@ bool _isSummaryCall(TrajectoryEvent event) => switch (event) {
   FetchEnded() ||
   ActionProposed() ||
   TrajectoryStarted() ||
-  TrajectoryRulesUnreadable() ||
-  TurnOnChain() => false,
+  TrajectoryRulesUnreadable() => false,
 };
 
 /// The latest reply in [history]'s [requestWindow] when it left less than

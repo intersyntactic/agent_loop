@@ -1,13 +1,11 @@
 /// A trajectory's history as the loop actually sees it, live: the user's
 /// own messages arrive as `event-admitted-to-mission` entries (the docking
-/// station's own kind), never as turns on the loop's chain. Only the
-/// loop's own turn-chain entries (still carrying `UserSaid`'s data, since
-/// [MessageSaid.node] IS one) are read by [followTrajectory]; this reads
+/// station's own kind), never on the loop's chain; the loop's own entries,
+/// its proposals and summary markers, are read off its chain; this reads
 /// both, merged in logbook order.
 ///
 /// A prior agent reply is read from the airlock's outcome of the model call
-/// that produced it ([SaidByAgent]), never from a turn: a loop writes no
-/// reply turn of its own.
+/// that produced it ([SaidByAgent]): a loop writes no reply of its own.
 ///
 /// A summary call (lib/src/history_compaction.dart) is a step of its own:
 /// its [HistorySummaryAsked] marker arrives as [SummaryAsked], its proposal
@@ -50,7 +48,16 @@ import 'package:is_flight_rules/is_flight_rules.dart' show FlightRules;
 import 'package:is_logbook_client/is_logbook_client.dart'
     show CaughtUp, Entry, Kind, LogbookReader, ObjectId;
 import 'package:is_model_vocabulary/is_model_vocabulary.dart'
-    show CutOffReply, FinishedReply, ModelReply, ProposedToolCalls, ToolCall;
+    show
+        CalledToolName,
+        CutOffReply,
+        FinishedReply,
+        ModelReply,
+        ProposedToolCalls,
+        ToolCall,
+        ToolFailed,
+        ToolRan,
+        ToolRefused;
 import 'package:is_effects/is_effects.dart'
     show
         ModelAndSignIn,
@@ -76,9 +83,8 @@ import 'package:is_tools_api/is_tools_api.dart' show OneActionTool;
 
 import 'history_compaction.dart'
     show HistorySummaryAsked, replyOverTheLine, requestWindow;
-import 'model_request_input.dart' show inputTurnOf;
+import 'kind_the_loop_writes.dart';
 import 'tool_calls.dart';
-import 'turn_envelope.dart';
 
 /// What [followTrajectoryHistory] hands on: each [TrajectoryEvent] in
 /// order, and one [CaughtUpWithTrajectory] once the backlog has been read.
@@ -95,8 +101,8 @@ final class CaughtUpWithTrajectory extends TrajectoryFeedItem {
 /// One event in a trajectory's history, in the order it actually happened:
 /// [SaidByUser] (an admitted message), [SaidByAgent] (the model's reply to
 /// a call the loop proposed), [FetchEnded] (a tool's fetch the loop
-/// proposed), [ActionProposed] (a proposal this loop wrote) or [TurnOnChain]
-/// (a turn the loop itself wrote).
+/// proposed), [ActionProposed] (a proposal this loop wrote) or
+/// [SummaryAsked] (a summary marker this loop wrote), among others.
 sealed class TrajectoryEvent extends TrajectoryFeedItem {
   const TrajectoryEvent({required this.hash});
 
@@ -247,21 +253,16 @@ final class TrajectoryRulesUnreadable extends TrajectoryEvent {
   final String why;
 }
 
-/// An entry the loop itself wrote on its own turn chain.
-final class TurnOnChain extends TrajectoryEvent {
-  const TurnOnChain({required super.hash, required this.turn});
-
-  final TurnEnvelope turn;
-}
-
-final _proposedKind = Kind.parse(ActionProposedByAgentLoop.kind)!;
+final _proposedKind = KindTheLoopWrites.actionProposed.kind;
+final _summaryAskedKind = KindTheLoopWrites.historySummaryAsked.kind;
 final _outcomeKind = Kind.parse(outcomeOfProposedActionKind)!;
 
 /// Every event on [chainRoot]'s trajectory, live, in logbook order: the
-/// loop's own turns (by the same chain-membership rule [followTrajectory]
-/// uses) and every `MessageSaid` the docking station admitted to this
-/// trajectory — trusting the feed's own scoping for the latter, since an
-/// admission is never chained onto the loop's turns at all. An admission
+/// loop's own summary markers (an entry belongs to the chain when its
+/// `previous` is already on it) and proposals, and every `MessageSaid` the
+/// docking station admitted to this trajectory — trusting the feed's own
+/// scoping for the latter, since an admission is never chained onto the
+/// loop's entries at all. An admission
 /// whose reading is not something said (a join, a change) is skipped: this
 /// loop has nothing to render for it yet.
 ///
@@ -274,12 +275,12 @@ final _outcomeKind = Kind.parse(outcomeOfProposedActionKind)!;
 /// [SummaryByAgent] when a [HistorySummaryAsked] marker named its step
 /// first. A proposal the airlock could not read as one is skipped.
 ///
-/// Built with [Stream.expand] rather than `async*`, for the same reason as
-/// [followTrajectory]: `expand` passes a cancel straight through to
-/// [LogbookReader.subscribe], which an `async*` wrapper would not.
+/// Built with [Stream.expand] rather than `async*`: an `async*` generator's
+/// own cancel waits for its next yield, which never comes while a live
+/// subscription is idle; `expand` passes a cancel straight through to
+/// [LogbookReader.subscribe].
 Stream<TrajectoryFeedItem> followTrajectoryHistory(
   LogbookReader reader, {
-  required Kind turnKind,
   required ObjectId chainRoot,
 }) {
   final onChain = <ObjectId>{chainRoot};
@@ -290,7 +291,7 @@ Stream<TrajectoryFeedItem> followTrajectoryHistory(
   // Each summary marker's step, to the last event it summarizes.
   final summariesAsked = <int, ObjectId>{};
   final kinds = {
-    turnKind,
+    _summaryAskedKind,
     DecisionEntryKind.eventAdmittedToMission,
     _proposedKind,
     _outcomeKind,
@@ -364,17 +365,15 @@ Stream<TrajectoryFeedItem> followTrajectoryHistory(
         ],
       };
     }
-    if (entry.kind == turnKind) {
+    if (entry.kind == _summaryAskedKind) {
       final belongs =
           entry.previous != null && onChain.contains(entry.previous);
       if (!belongs) return const [];
       onChain.add(entry.id);
-      final turn = TurnEnvelope.decode(entry.body);
-      if (HistorySummaryAsked.fromJson(turn.node) case final asked?) {
-        summariesAsked[asked.step] = asked.upTo;
-        return [SummaryAsked(hash: entry.id, asked: asked)];
-      }
-      return [TurnOnChain(hash: entry.id, turn: turn)];
+      final asked = HistorySummaryAsked.decode(entry.body);
+      if (asked == null) return const [];
+      summariesAsked[asked.step] = asked.upTo;
+      return [SummaryAsked(hash: entry.id, asked: asked)];
     }
     final decision = decodeDecision(entry.kind, entry.body);
     if (decision is! EventAdmittedToMission) return const [];
@@ -485,16 +484,14 @@ String _text(List<int> body) => utf8.decode(body, allowMalformed: true);
 /// exists. A reply goes where the call it answers was proposed, not
 /// where its outcome arrived, so a message admitted while the model was
 /// answering comes after that answer, as the model saw it.
-/// [TurnOnChain] goes through [inputTurnOf]'s own node-shape cases; since
-/// ReplyText turns are dead and no `UserSaid` ever arrives this way any
-/// more (it arrives as [SaidByUser] instead), nothing currently reaches
-/// this case — kept for whatever the loop's own chain ends up carrying.
-/// Throws [FormatException] for a [TurnOnChain] whose node shape it doesn't
-/// know.
 ///
 /// A reply that calls tools is followed by one answer per call, in the
 /// order it made them: its fetch's result, why it can't run, or that it was
-/// never run. [tools] are the trajectory's, by name.
+/// never run. [tools] are the trajectory's, by name. A fetch's result that
+/// a model call was already sent in an earlier turn (before the latest
+/// message that starts one) goes as [shortenedEarlierResult]: the model has
+/// answered with it. One that ended after a new message arrived, before
+/// any model call saw it, goes whole.
 List<ModelTurn> trajectoryInput(
   List<TrajectoryEvent> history, {
   required Map<ToolName, OneActionTool> tools,
@@ -504,6 +501,18 @@ List<ModelTurn> trajectoryInput(
       if (event case SaidByAgent(:final proposed, :final reply))
         proposed: reply,
   };
+  final sentInAnEarlierTurn = _fetchesSentInAnEarlierTurn(history);
+  ToolResult answer(int step, int index, ToolCall call) {
+    final result = _answerTo(history, step, index, call, tools);
+    final ended = switch (_fetchAt(history, _callPlace(step, index))) {
+      final fetch? => _fetchEnd(history, fetch),
+      null => null,
+    };
+    return ended != null && sentInAnEarlierTurn.contains(ended.hash)
+        ? shortenedEarlierResult(result, tool: call.name, step: step)
+        : result;
+  }
+
   return [
     for (final event in history)
       ...switch (event) {
@@ -527,7 +536,7 @@ List<ModelTurn> trajectoryInput(
                   for (final (i, call) in calls.indexed)
                     ToolAnswered(
                       callId: call.id,
-                      result: _answerTo(history, place.step, i, call, tools),
+                      result: answer(place.step, i, call),
                     ),
                 ],
             },
@@ -535,7 +544,6 @@ List<ModelTurn> trajectoryInput(
         SummaryByAgent(:final reply) => [
           UserSaid('$_summaryLead${reply.text}'),
         ],
-        TurnOnChain(:final turn) => [inputTurnOf(turn)],
         ActionProposed() ||
         SaidByAgent() ||
         ModelCallRefused() ||
@@ -550,6 +558,65 @@ List<ModelTurn> trajectoryInput(
 /// Leads a summary's text, so the model reads it as its own earlier notes
 /// rather than something the user just said.
 const _summaryLead = 'Your summary of this conversation before this point:\n\n';
+
+/// The fetch ends in [history] that a model call came after, before the
+/// latest message that starts a turn: each was sent to the model whole.
+Set<ObjectId> _fetchesSentInAnEarlierTurn(List<TrajectoryEvent> history) {
+  final currentTurnFrom = history.lastIndexWhere(
+    (e) => e is SaidByUser && e.startsTurn,
+  );
+  final ended = <ObjectId>{};
+  final sent = <ObjectId>{};
+  for (final event in history.take(currentTurnFrom < 0 ? 0 : currentTurnFrom)) {
+    switch (event) {
+      case FetchEnded(:final hash):
+        ended.add(hash);
+      case ActionProposed(asksTheModel: true):
+        sent.addAll(ended);
+      case SaidByUser() ||
+          SaidByAgent() ||
+          ModelCallRefused() ||
+          SummaryByAgent() ||
+          SummaryAsked() ||
+          ActionProposed() ||
+          TrajectoryStarted() ||
+          TrajectoryRulesUnreadable():
+        continue;
+    }
+  }
+  return sent;
+}
+
+/// A result over this many tokens, from an earlier turn, goes as a stub.
+/// The stub itself is about 40.
+const shortenResultsOverTokens = 100;
+
+/// [result], a tool's answer from an earlier turn, as the model is sent it:
+/// whole when it is under [shortenResultsOverTokens] or a refusal, which
+/// is short already; otherwise a stub naming [tool], [step] and its size,
+/// in the same variant so the model still knows whether it ran. Tokens are
+/// estimated as four characters each.
+ToolResult shortenedEarlierResult(
+  ToolResult result, {
+  required CalledToolName tool,
+  required int step,
+}) {
+  String stub(String text) =>
+      '[Not repeated: in an earlier turn, ${tool.asSent} at step $step '
+      'returned about ${_estimatedTokens(text)} tokens. Call ${tool.asSent} '
+      'again if you need it.]';
+  return switch (result) {
+    ToolRan(:final text)
+        when _estimatedTokens(text) > shortenResultsOverTokens =>
+      ToolRan(stub(text)),
+    ToolFailed(:final text)
+        when _estimatedTokens(text) > shortenResultsOverTokens =>
+      ToolFailed(stub(text)),
+    ToolRan() || ToolFailed() || ToolRefused() => result,
+  };
+}
+
+int _estimatedTokens(String text) => (text.length / 4).ceil();
 
 /// What the model hears about [call], the [index]th call of [step]'s reply,
 /// read against [tools]: why it can't run, its fetch's result once ended,
@@ -617,12 +684,26 @@ const _cutOffNote = '(This reply was cut off before it finished.)';
           FetchEnded() ||
           SummaryByAgent() ||
           SummaryAsked() ||
-          ActionProposed() ||
-          TurnOnChain():
+          ActionProposed():
         continue;
     }
   }
   return (model: null, why: 'no admission started it under rules');
+}
+
+/// The turn [step] belongs to, counted from 0: how many messages that
+/// start a turn came before [step]'s model call, less one. Null when no
+/// such message came first, or [step] has no model call in [history].
+int? turnOf(List<TrajectoryEvent> history, int step) {
+  final call = history.indexWhere(
+    (e) => e is ActionProposed && e.place == ProposedForTheModelCall.at(step),
+  );
+  if (call < 0) return null;
+  final started = history
+      .take(call)
+      .where((e) => e is SaidByUser && e.startsTurn)
+      .length;
+  return started == 0 ? null : started - 1;
 }
 
 /// The message a loop started on [history] still owes an answer: the
@@ -644,7 +725,6 @@ SaidByUser? unansweredTurn(List<TrajectoryEvent> history) {
           SummaryByAgent() ||
           SummaryAsked() ||
           ActionProposed() ||
-          TurnOnChain() ||
           TrajectoryStarted() ||
           TrajectoryRulesUnreadable():
         continue;
@@ -654,13 +734,11 @@ SaidByUser? unansweredTurn(List<TrajectoryEvent> history) {
 }
 
 /// The latest entry this loop wrote on its own chain that [history] holds:
-/// a proposal or a turn. A restarted loop's chain resumes after it.
+/// a proposal or a summary marker. A restarted loop's chain resumes after
+/// it.
 ObjectId? lastOwnEntry(List<TrajectoryEvent> history) => [
   for (final event in history)
-    if (event is ActionProposed ||
-        event is TurnOnChain ||
-        event is SummaryAsked)
-      event.hash,
+    if (event is ActionProposed || event is SummaryAsked) event.hash,
 ].lastOrNull;
 
 /// Whether every model call and fetch this loop has proposed has ended in

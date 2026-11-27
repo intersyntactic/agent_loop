@@ -17,14 +17,12 @@ import 'dart:io' show stdout;
 
 import 'package:is_airlock_api/is_airlock_api.dart'
     show ActionProposedByAgentLoop, PlaceInTrajectory;
-import 'package:is_logbook_client/is_logbook_client.dart' show Kind;
 import 'package:is_shapes/is_shapes.dart' show EntryId;
 
+import 'kind_the_loop_writes.dart';
 import 'loop_exit.dart' show FeedEnded;
 import 'proposes_at_next_place.dart';
 import 'trajectory_chain.dart';
-
-final _proposedKind = Kind.parse(ActionProposedByAgentLoop.kind)!;
 
 /// One `outcomeOfProposedActionKind` entry, read back: the proposal it
 /// names, its own id in the logbook, and its whole body as text, built by
@@ -104,7 +102,10 @@ final class TrajectoryProposalLink implements ProposesActionsThroughTheLogbook {
 
   @override
   Future<EntryId> writeProposal(String body) async {
-    final written = await chain.appendEntry(_proposedKind, utf8.encode(body));
+    final written = await chain.appendEntry(
+      KindTheLoopWrites.actionProposed,
+      utf8.encode(body),
+    );
     final id = EntryId.parse(written.hex)!;
     if (ActionProposedByAgentLoop.read(body) case ActionProposedByAgentLoop(
       :final place,

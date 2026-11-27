@@ -94,7 +94,8 @@ Object? _answered(List<WebResponse> responses) => encodeOutcome(
 
 void main() {
   group('drawingArgs', () {
-    test('text goes on stdin, with the step and context for its footer', () {
+    test('text goes on stdin, with the turn, step and context for its '
+        'footer', () {
       final args = drawingArgs(
         text: 'hello',
         usage: const ModelUsage(
@@ -106,7 +107,8 @@ void main() {
         replyEndpoint: _endpoint,
         signIn: _signIn,
         trajectory: _trajectory,
-        step: 3,
+        turn: 2,
+        step: 6,
       );
 
       expect(args.stdin, 'hello');
@@ -121,7 +123,9 @@ void main() {
         '--trajectory',
         'a1' * 32,
         '--turn',
-        '3',
+        '2',
+        '--step',
+        '6',
         '--context-tokens',
         '150',
         '--context-window',
@@ -136,11 +140,27 @@ void main() {
         replyEndpoint: _endpoint,
         signIn: _signIn,
         trajectory: _trajectory,
+        turn: 0,
         step: 1,
       );
 
       expect(args.args, isNot(contains('--context-tokens')));
       expect(args.args, isNot(contains('--context-window')));
+    });
+
+    test('an unknown turn sends --step alone, never --turn alone', () {
+      final args = drawingArgs(
+        text: 'hello',
+        usage: null,
+        replyEndpoint: _endpoint,
+        signIn: _signIn,
+        trajectory: _trajectory,
+        turn: null,
+        step: 1,
+      );
+
+      expect(args.args, isNot(contains('--turn')));
+      expect(args.args, containsAllInOrder(['--step', '1']));
     });
   });
 
@@ -187,6 +207,7 @@ void main() {
           replyEndpoint: _endpoint,
           signIn: _signIn,
           trajectory: _trajectory,
+          turn: 0,
           step: 4,
         ),
         ProposesAtNextPlace.forTheReply(link, step: 4),
@@ -220,6 +241,7 @@ void main() {
           replyEndpoint: _endpoint,
           signIn: _signIn,
           trajectory: _trajectory,
+          turn: 0,
           step: 4,
         ),
         ProposesAtNextPlace.forTheReply(link, step: 4),
@@ -248,6 +270,7 @@ void main() {
           replyEndpoint: _endpoint,
           signIn: _signIn,
           trajectory: _trajectory,
+          turn: 0,
           step: 1,
         ),
         ProposesAtNextPlace.forTheReply(link, step: 1),
@@ -277,6 +300,7 @@ void main() {
           replyEndpoint: _endpoint,
           signIn: _signIn,
           trajectory: _trajectory,
+          turn: 0,
           step: 2,
         ),
         ProposesAtNextPlace.forTheReply(link, step: 2),
