@@ -48,7 +48,16 @@ import 'package:is_flight_rules/is_flight_rules.dart' show FlightRules;
 import 'package:is_logbook_client/is_logbook_client.dart'
     show CaughtUp, Entry, Kind, LogbookReader, ObjectId;
 import 'package:is_model_vocabulary/is_model_vocabulary.dart'
-    show CutOffReply, FinishedReply, ModelReply, ProposedToolCalls, ToolCall;
+    show
+        CalledToolName,
+        CutOffReply,
+        FinishedReply,
+        ModelReply,
+        ProposedToolCalls,
+        ToolCall,
+        ToolFailed,
+        ToolRan,
+        ToolRefused;
 import 'package:is_effects/is_effects.dart'
     show
         ModelAndSignIn,
@@ -478,7 +487,11 @@ String _text(List<int> body) => utf8.decode(body, allowMalformed: true);
 ///
 /// A reply that calls tools is followed by one answer per call, in the
 /// order it made them: its fetch's result, why it can't run, or that it was
-/// never run. [tools] are the trajectory's, by name.
+/// never run. [tools] are the trajectory's, by name. A fetch's result that
+/// a model call was already sent in an earlier turn (before the latest
+/// message that starts one) goes as [shortenedEarlierResult]: the model has
+/// answered with it. One that ended after a new message arrived, before
+/// any model call saw it, goes whole.
 List<ModelTurn> trajectoryInput(
   List<TrajectoryEvent> history, {
   required Map<ToolName, OneActionTool> tools,
@@ -488,6 +501,18 @@ List<ModelTurn> trajectoryInput(
       if (event case SaidByAgent(:final proposed, :final reply))
         proposed: reply,
   };
+  final sentInAnEarlierTurn = _fetchesSentInAnEarlierTurn(history);
+  ToolResult answer(int step, int index, ToolCall call) {
+    final result = _answerTo(history, step, index, call, tools);
+    final ended = switch (_fetchAt(history, _callPlace(step, index))) {
+      final fetch? => _fetchEnd(history, fetch),
+      null => null,
+    };
+    return ended != null && sentInAnEarlierTurn.contains(ended.hash)
+        ? shortenedEarlierResult(result, tool: call.name, step: step)
+        : result;
+  }
+
   return [
     for (final event in history)
       ...switch (event) {
@@ -511,7 +536,7 @@ List<ModelTurn> trajectoryInput(
                   for (final (i, call) in calls.indexed)
                     ToolAnswered(
                       callId: call.id,
-                      result: _answerTo(history, place.step, i, call, tools),
+                      result: answer(place.step, i, call),
                     ),
                 ],
             },
@@ -533,6 +558,65 @@ List<ModelTurn> trajectoryInput(
 /// Leads a summary's text, so the model reads it as its own earlier notes
 /// rather than something the user just said.
 const _summaryLead = 'Your summary of this conversation before this point:\n\n';
+
+/// The fetch ends in [history] that a model call came after, before the
+/// latest message that starts a turn: each was sent to the model whole.
+Set<ObjectId> _fetchesSentInAnEarlierTurn(List<TrajectoryEvent> history) {
+  final currentTurnFrom = history.lastIndexWhere(
+    (e) => e is SaidByUser && e.startsTurn,
+  );
+  final ended = <ObjectId>{};
+  final sent = <ObjectId>{};
+  for (final event in history.take(currentTurnFrom < 0 ? 0 : currentTurnFrom)) {
+    switch (event) {
+      case FetchEnded(:final hash):
+        ended.add(hash);
+      case ActionProposed(asksTheModel: true):
+        sent.addAll(ended);
+      case SaidByUser() ||
+          SaidByAgent() ||
+          ModelCallRefused() ||
+          SummaryByAgent() ||
+          SummaryAsked() ||
+          ActionProposed() ||
+          TrajectoryStarted() ||
+          TrajectoryRulesUnreadable():
+        continue;
+    }
+  }
+  return sent;
+}
+
+/// A result over this many tokens, from an earlier turn, goes as a stub.
+/// The stub itself is about 40.
+const shortenResultsOverTokens = 100;
+
+/// [result], a tool's answer from an earlier turn, as the model is sent it:
+/// whole when it is under [shortenResultsOverTokens] or a refusal, which
+/// is short already; otherwise a stub naming [tool], [step] and its size,
+/// in the same variant so the model still knows whether it ran. Tokens are
+/// estimated as four characters each.
+ToolResult shortenedEarlierResult(
+  ToolResult result, {
+  required CalledToolName tool,
+  required int step,
+}) {
+  String stub(String text) =>
+      '[Not repeated: in an earlier turn, ${tool.asSent} at step $step '
+      'returned about ${_estimatedTokens(text)} tokens. Call ${tool.asSent} '
+      'again if you need it.]';
+  return switch (result) {
+    ToolRan(:final text)
+        when _estimatedTokens(text) > shortenResultsOverTokens =>
+      ToolRan(stub(text)),
+    ToolFailed(:final text)
+        when _estimatedTokens(text) > shortenResultsOverTokens =>
+      ToolFailed(stub(text)),
+    ToolRan() || ToolFailed() || ToolRefused() => result,
+  };
+}
+
+int _estimatedTokens(String text) => (text.length / 4).ceil();
 
 /// What the model hears about [call], the [index]th call of [step]'s reply,
 /// read against [tools]: why it can't run, its fetch's result once ended,
@@ -605,6 +689,21 @@ const _cutOffNote = '(This reply was cut off before it finished.)';
     }
   }
   return (model: null, why: 'no admission started it under rules');
+}
+
+/// The turn [step] belongs to, counted from 0: how many messages that
+/// start a turn came before [step]'s model call, less one. Null when no
+/// such message came first, or [step] has no model call in [history].
+int? turnOf(List<TrajectoryEvent> history, int step) {
+  final call = history.indexWhere(
+    (e) => e is ActionProposed && e.place == ProposedForTheModelCall.at(step),
+  );
+  if (call < 0) return null;
+  final started = history
+      .take(call)
+      .where((e) => e is SaidByUser && e.startsTurn)
+      .length;
+  return started == 0 ? null : started - 1;
 }
 
 /// The message a loop started on [history] still owes an answer: the

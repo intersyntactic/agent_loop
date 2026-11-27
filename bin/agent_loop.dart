@@ -182,6 +182,7 @@ Future<Never> _run(_Options options) async {
         replyEndpoint: address,
         signIn: signIn,
         trajectory: started.trajectory,
+        turn: turnOf(history, step),
         step: step,
       ),
       ProposesAtNextPlace.forTheReply(link, step: step),
