@@ -10,15 +10,10 @@ import 'dart:convert' show jsonDecode, jsonEncode;
 
 import 'package:is_airlock_api/is_airlock_api.dart'
     show Action, Done, Executable, Failed, Program, ProposesActions, Result;
-import 'package:is_effects/is_effects.dart'
-    show
-        Args,
-        ExecResult,
-        Exited,
-        Killed,
-        ProposedRequest,
-        WebResponse,
-        decodeProposedRequest;
+import 'package:is_program_request_vocabulary/is_program_request_vocabulary.dart'
+    show Args, ExecResult, Exited, Killed;
+import 'package:is_web_request_vocabulary/is_web_request_vocabulary.dart'
+    show ProposedRequest, WebResponse, decodeProposedRequest;
 import 'package:is_conversation_vocabulary/is_conversation_vocabulary.dart'
     show RepliesUnderWebAddress, RepliesWithPinnedBodyFields, ReplyEndpoint;
 import 'package:is_model_vocabulary/is_model_vocabulary.dart' show ModelUsage;
@@ -37,8 +32,8 @@ AddressPrefix? replyAddressFor(ReplyEndpoint endpoint) => switch (endpoint) {
 
 /// The actions of a reply saying [text], such as the model's answer or why
 /// its call was refused, to [replyEndpoint] as [signIn]: [drawing] is
-/// run on it and prints the requests as one JSON array of is_effects'
-/// `encodeProposedRequest`; those are then sent in order. Done with how
+/// run on it and prints the requests as one JSON array of
+/// is_web_request_vocabulary's `encodeProposedRequest`; those are then sent in order. Done with how
 /// many were sent; [Failed] when either action is refused, the drawing
 /// fails, what it printed is not requests, or the destination refuses one
 /// ([sentOrRefused]). [turn], [step] and [usage], how full

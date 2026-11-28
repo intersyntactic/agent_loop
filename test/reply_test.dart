@@ -12,17 +12,12 @@ import 'package:is_airlock_api/is_airlock_api.dart'
         Failed,
         ProposedForTheReply,
         outcomeOfProposedActionToJson;
-import 'package:is_effects/is_effects.dart'
-    show
-        ExecResult,
-        Exited,
-        ProgramName,
-        Ran,
-        NothingRan,
-        WebResponse,
-        encodeExecResult,
-        encodeOutcome,
-        encodeWebResponse;
+import 'package:is_outcome_vocabulary/is_outcome_vocabulary.dart'
+    show Ran, NothingRan, encodeOutcome;
+import 'package:is_program_request_vocabulary/is_program_request_vocabulary.dart'
+    show ExecResult, Exited, ProgramName, encodeExecResult;
+import 'package:is_web_request_vocabulary/is_web_request_vocabulary.dart'
+    show WebResponse, encodeWebResponse;
 import 'package:is_model_vocabulary/is_model_vocabulary.dart' show ModelUsage;
 import 'package:is_sign_in_vocabulary/is_sign_in_vocabulary.dart' show SignIn;
 import 'package:is_web_address_vocabulary/is_web_address_vocabulary.dart'

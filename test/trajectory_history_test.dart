@@ -13,25 +13,17 @@ import 'package:is_airlock_api/is_airlock_api.dart'
     show
         ActionProposedByAgentLoop,
         Done,
-        ModelCall,
+        ModelCallNamingRequestEntry,
         ProposedForTheModelCall,
         Program,
         outcomeOfProposedActionKind,
         outcomeOfProposedActionToJson;
-import 'package:is_effects/is_effects.dart'
-    show
-        ModelAndSignIn,
-        ModelName,
-        ModelSignInName,
-        Outcome,
-        NothingRan,
-        Ran,
-        StoppedPartway,
-        TextBody,
-        WebResponse,
-        encodeModelReply,
-        encodeOutcome,
-        encodeWebResponse;
+import 'package:is_model_vocabulary/is_model_vocabulary.dart'
+    show ModelAndSignIn, ModelName, ModelSignInName;
+import 'package:is_outcome_vocabulary/is_outcome_vocabulary.dart'
+    show Outcome, NothingRan, Ran, StoppedPartway, encodeOutcome;
+import 'package:is_web_request_vocabulary/is_web_request_vocabulary.dart'
+    show TextBody, WebResponse, encodeWebResponse;
 import 'package:is_model_vocabulary/is_model_vocabulary.dart'
     show CutOffReply, FinishedReply, ModelReply;
 import 'package:is_sign_in_vocabulary/is_sign_in_vocabulary.dart' show SignIn;
@@ -405,7 +397,7 @@ void main() {
       Outcome<ModelReply> outcome,
     ) async {
       final asked = Program.askTheModel.runOrFail<ModelReply>(
-        ModelCall(
+        ModelCallNamingRequestEntry(
           signIn: ModelSignInName.parse('anthropic-api')!,
           model: ModelName.parse('claude-opus-5-5')!,
           request: EntryId.parse('ab' * 32)!,
@@ -423,7 +415,7 @@ void main() {
       final body = jsonEncode(
         outcomeOfProposedActionToJson(
           proposed,
-          encodeOutcome(outcome, encodeModelReply),
+          encodeOutcome(outcome, (ModelReply reply) => reply.toJson()),
         ),
       );
       final written = await rawWriter.write(

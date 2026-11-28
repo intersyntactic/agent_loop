@@ -58,17 +58,12 @@ import 'package:is_model_vocabulary/is_model_vocabulary.dart'
         ToolFailed,
         ToolRan,
         ToolRefused;
-import 'package:is_effects/is_effects.dart'
-    show
-        ModelAndSignIn,
-        NothingRan,
-        Outcome,
-        Ran,
-        StoppedPartway,
-        WebResponse,
-        decodeModelReply,
-        decodeOutcome,
-        decodeWebResponse;
+import 'package:is_model_vocabulary/is_model_vocabulary.dart'
+    show ModelAndSignIn, ModelReply;
+import 'package:is_outcome_vocabulary/is_outcome_vocabulary.dart'
+    show NothingRan, Outcome, Ran, StoppedPartway, decodeOutcome;
+import 'package:is_web_request_vocabulary/is_web_request_vocabulary.dart'
+    show WebResponse, decodeWebResponse;
 import 'package:is_model_vocabulary/is_model_vocabulary.dart'
     show
         AgentCalledTools,
@@ -440,7 +435,10 @@ TrajectoryEvent _startedUnder(
   try {
     return (
       proposed: proposed,
-      reply: switch (decodeOutcome(outcome.result, decodeModelReply)) {
+      reply: switch (decodeOutcome(
+        outcome.result,
+        (json, _) => ModelReply.fromJson(json),
+      )) {
         Ran(:final output) => output,
         NothingRan() || StoppedPartway() => null,
       },

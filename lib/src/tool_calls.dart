@@ -11,16 +11,10 @@ library;
 import 'dart:convert' show jsonEncode;
 
 import 'package:checked_json/checked_json.dart' show JsonFieldException;
-import 'package:is_effects/is_effects.dart'
-    show
-        BytesBody,
-        NoBody,
-        NothingRan,
-        Outcome,
-        Ran,
-        StoppedPartway,
-        TextBody,
-        WebResponse;
+import 'package:is_outcome_vocabulary/is_outcome_vocabulary.dart'
+    show NothingRan, Outcome, Ran, StoppedPartway;
+import 'package:is_web_request_vocabulary/is_web_request_vocabulary.dart'
+    show BytesBody, NoBody, TextBody, WebResponse;
 import 'package:is_model_vocabulary/is_model_vocabulary.dart'
     show
         IllFormedName,

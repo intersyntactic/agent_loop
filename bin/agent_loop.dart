@@ -45,7 +45,8 @@ library;
 import 'dart:io';
 
 import 'package:agent_loop/agent_loop.dart';
-import 'package:is_effects/is_effects.dart' show ProgramName;
+import 'package:is_program_request_vocabulary/is_program_request_vocabulary.dart'
+    show ProgramName;
 import 'package:is_model_vocabulary/is_model_vocabulary.dart'
     show
         CutOffReply,
@@ -61,7 +62,7 @@ import 'package:is_airlock_api/is_airlock_api.dart'
         Done,
         Executable,
         Failed,
-        ModelCall,
+        ModelCallNamingRequestEntry,
         PlaceInTrajectory,
         Program,
         ProposedForAnIntent,
@@ -229,7 +230,7 @@ Future<Never> _run(_Options options) async {
     final step = nextStep++;
     latestOwn = ProposedForTheModelCall.at(step);
     final asked = Program.askTheModel.runOrFail<ModelReply>(
-      ModelCall(
+      ModelCallNamingRequestEntry(
         signIn: model.signIn,
         model: model.model,
         request: EntryId.parse(requestHash.hex)!,
@@ -302,7 +303,7 @@ Future<Never> _run(_Options options) async {
       'model-request ${requestHash.hex}',
     );
     final asked = Program.askTheModel.runOrFail<ModelReply>(
-      ModelCall(
+      ModelCallNamingRequestEntry(
         signIn: model.signIn,
         model: model.model,
         request: EntryId.parse(requestHash.hex)!,

@@ -6,15 +6,10 @@ import 'dart:typed_data' show Uint8List;
 
 import 'package:agent_loop/agent_loop.dart';
 import 'package:checked_json/checked_json.dart' show JsonObject;
-import 'package:is_effects/is_effects.dart'
-    show
-        BytesBody,
-        NothingRan,
-        Outcome,
-        Ran,
-        StoppedPartway,
-        TextBody,
-        WebResponse;
+import 'package:is_outcome_vocabulary/is_outcome_vocabulary.dart'
+    show NothingRan, Outcome, Ran, StoppedPartway;
+import 'package:is_web_request_vocabulary/is_web_request_vocabulary.dart'
+    show BytesBody, TextBody, WebResponse;
 import 'package:is_model_vocabulary/is_model_vocabulary.dart'
     show CalledToolName, ToolCall, ToolCallId, ToolInput;
 import 'package:is_sign_in_vocabulary/is_sign_in_vocabulary.dart' show SignIn;
