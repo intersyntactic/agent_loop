@@ -158,8 +158,8 @@ Future<Never> _run(_Options options) async {
     final address = replyAddressFor(endpoint);
     if (address == null) {
       stderr.writeln(
-        'agent_loop: $what not sent: this trajectory replies in a Slack '
-        "conversation, which the loop can't send to yet",
+        'agent_loop: $what not sent: this trajectory replies with pinned '
+        "body fields, which the loop can't send yet",
       );
       return;
     }
