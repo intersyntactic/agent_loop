@@ -26,13 +26,9 @@ import 'package:is_effects/is_effects.dart'
 import 'package:is_model_vocabulary/is_model_vocabulary.dart' show ModelUsage;
 import 'package:is_sign_in_vocabulary/is_sign_in_vocabulary.dart' show SignIn;
 import 'package:is_web_address_vocabulary/is_web_address_vocabulary.dart'
-    show AddressPrefix, Origin, PathPrefix;
+    show AddressPrefix, Origin, PathPrefix, WebPath;
 import 'package:is_conversation_vocabulary/is_conversation_vocabulary.dart'
-    show
-        RepliesInSlackConversation,
-        RepliesUnderWebAddress,
-        SlackChannelId,
-        SlackMessageTimestamp;
+    show PinnedBodyFields, RepliesUnderWebAddress, RepliesWithPinnedBodyFields;
 import 'package:is_shapes/is_shapes.dart' show EntryId, TrajectoryId;
 import 'package:test/test.dart';
 
@@ -318,13 +314,16 @@ void main() {
       expect(replyAddressFor(RepliesUnderWebAddress(_endpoint)), _endpoint);
     });
 
-    test('a Slack conversation gets no address, so no reply is sent', () {
-      final slack = RepliesInSlackConversation(
+    test('pinned body fields get no address, so no reply is sent', () {
+      final pinned = RepliesWithPinnedBodyFields.at(
         origin: Origin.parse('https://slack.com')!,
-        channel: SlackChannelId.parse('C0123ABC')!,
-        thread: SlackMessageTimestamp.parse('1700000000.000100'),
-      );
-      expect(replyAddressFor(slack), isNull);
+        path: WebPath.parse('/api/chat.postMessage')!,
+        pinned: PinnedBodyFields.of({
+          'channel': 'C0123ABC',
+          'thread_ts': '1700000000.000100',
+        })!,
+      )!;
+      expect(replyAddressFor(pinned), isNull);
     });
   });
 }

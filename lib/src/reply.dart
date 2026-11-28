@@ -20,7 +20,7 @@ import 'package:is_effects/is_effects.dart'
         WebResponse,
         decodeProposedRequest;
 import 'package:is_conversation_vocabulary/is_conversation_vocabulary.dart'
-    show RepliesInSlackConversation, RepliesUnderWebAddress, ReplyEndpoint;
+    show RepliesUnderWebAddress, RepliesWithPinnedBodyFields, ReplyEndpoint;
 import 'package:is_model_vocabulary/is_model_vocabulary.dart' show ModelUsage;
 import 'package:is_shapes/is_shapes.dart' show TrajectoryId;
 import 'package:is_sign_in_vocabulary/is_sign_in_vocabulary.dart' show SignIn;
@@ -28,11 +28,11 @@ import 'package:is_web_address_vocabulary/is_web_address_vocabulary.dart'
     show AddressPrefix, encodeAddressPrefix;
 
 /// The web address a reply to [endpoint] is sent under, or null when the
-/// loop can't send to it: a Slack conversation is named in a reply's body,
-/// not its address, and no drawing writes one yet.
+/// loop can't send to it: an endpoint with pinned body fields names its
+/// conversation in the reply's body, and no drawing writes those fields yet.
 AddressPrefix? replyAddressFor(ReplyEndpoint endpoint) => switch (endpoint) {
   RepliesUnderWebAddress(:final prefix) => prefix,
-  RepliesInSlackConversation() => null,
+  RepliesWithPinnedBodyFields() => null,
 };
 
 /// The actions of a reply saying [text], such as the model's answer or why

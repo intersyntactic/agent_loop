@@ -38,7 +38,7 @@ import 'package:is_sign_in_vocabulary/is_sign_in_vocabulary.dart' show SignIn;
 import 'package:is_web_address_vocabulary/is_web_address_vocabulary.dart'
     show AddressPrefix, Origin, PathPrefix, WebPath;
 import 'package:is_conversation_vocabulary/is_conversation_vocabulary.dart'
-    show RepliesUnderWebAddress, SourceMessageId, UserSaid;
+    show ConversationKind, RepliesUnderWebAddress, SourceMessageId, UserSaid;
 import 'package:is_model_vocabulary/is_model_vocabulary.dart'
     show ToolFailed, ToolName, ToolRan, ToolRefused;
 import 'package:checked_json/checked_json.dart' show JsonObject;
@@ -134,6 +134,7 @@ void main() {
           source: SourceMessageId.parse('m1')!,
           text: 'hey are you there',
         ),
+        conversationKind: ConversationKind.oneToOne,
       ),
       placement: OnTrajectory(TrajectoryId.parse('a1' * 32)!),
       startsTurn: true,
@@ -180,6 +181,52 @@ void main() {
     expect(_turnsOf(found), [
       {'kind': 'user', 'text': 'hey are you there'},
     ]);
+  });
+
+  test('reads an admitted message written before conversationKind existed, '
+      'as the live log holds them', () {
+    final (kind, body) = encodeDecision(
+      EventAdmittedToMission(
+        client.ObjectId.of(Uint8List.fromList(utf8.encode('raw event'))),
+        by: DecidedBy.rules,
+        translatedEvent: MessageSaid(
+          addressInExternalSystem: AddressInExternalSystem.parse('teams:c1')!,
+          containingAddress: null,
+          replyEndpoint: null,
+          key: EventKey.parse('k1')!,
+          addressedTo: null,
+          node: UserSaid(
+            author: ActorId.parse('teams:u1')!,
+            source: SourceMessageId.parse('m1')!,
+            text: 'written by an older docking station',
+          ),
+          conversationKind: ConversationKind.oneToOne,
+        ),
+        placement: OnTrajectory(TrajectoryId.parse('a1' * 32)!),
+        startsTurn: true,
+      ),
+    );
+    // cast-ok: encodeDecision writes a JSON object whose translatedEvent is one.
+    final json = jsonDecode(utf8.decode(body)) as Map<String, Object?>;
+    // cast-ok: as above.
+    final event = json['translatedEvent'] as Map<String, Object?>;
+    expect(event.remove('conversationKind'), 'one-to-one');
+    final older = Uint8List.fromList(utf8.encode(jsonEncode(json)));
+
+    expect(
+      decodeDecision(kind, older),
+      isA<EventAdmittedToMission>().having(
+        (d) => d.translatedEvent,
+        'translatedEvent',
+        isA<MessageSaid>()
+            .having(
+              (m) => m.conversationKind,
+              'conversationKind',
+              ConversationKind.notKnown,
+            )
+            .having((m) => m.node.text, 'text', contains('older')),
+      ),
+    );
   });
 
   group('the model a trajectory started under', () {
@@ -240,6 +287,7 @@ void main() {
                 source: SourceMessageId.parse('m$i')!,
                 text: text,
               ),
+              conversationKind: ConversationKind.oneToOne,
             ),
             placement: rules == null
                 ? OnTrajectory(TrajectoryId.parse('a1' * 32)!)
