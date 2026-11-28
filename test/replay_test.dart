@@ -23,6 +23,7 @@ import 'package:is_logbook_client/is_logbook_client.dart' show ObjectId;
 import 'package:is_model_vocabulary/is_model_vocabulary.dart'
     show
         AgentCalledTools,
+        NamedToolsDefined,
         AgentSaid,
         ModelTurn,
         ToolAnswered,
@@ -49,6 +50,7 @@ String _show(ModelTurn turn) => switch (turn) {
     'answer:$callId failed $text',
   ToolAnswered(:final callId, result: ToolRefused(:final why)) =>
     'answer:$callId refused $why',
+  NamedToolsDefined() => 'named tools',
 };
 
 ObjectId _id(String seed) => ObjectId.of(Uint8List.fromList(seed.codeUnits));

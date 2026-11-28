@@ -5,7 +5,8 @@ library;
 
 import 'package:is_airlock_api/is_airlock_api.dart'
     show Action, Done, Program, WebFetch;
-import 'package:is_effects/is_effects.dart' show BodyToKeep;
+import 'package:is_web_request_vocabulary/is_web_request_vocabulary.dart'
+    show BodyToKeep;
 import 'package:is_tool_definition_vocabulary/is_tool_definition_vocabulary.dart'
     show Fetch, OneActionTool, ToolAction;
 

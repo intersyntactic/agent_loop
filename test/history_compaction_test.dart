@@ -13,6 +13,7 @@ import 'package:is_logbook_client/is_logbook_client.dart' show ObjectId;
 import 'package:is_model_vocabulary/is_model_vocabulary.dart'
     show
         AgentCalledTools,
+        NamedToolsDefined,
         AgentSaid,
         CutOffReply,
         FinishedReply,
@@ -29,6 +30,7 @@ String _show(ModelTurn turn) => switch (turn) {
   UserSaid(:final text) => 'user:$text',
   AgentSaid(:final text) => 'agent:$text',
   AgentCalledTools() || ToolAnswered() => 'tools',
+  NamedToolsDefined() => 'named tools',
 };
 
 ObjectId _id(String seed) => ObjectId.of(Uint8List.fromList(seed.codeUnits));

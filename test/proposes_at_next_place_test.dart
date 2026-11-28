@@ -12,8 +12,11 @@ import 'package:is_airlock_api/is_airlock_api.dart'
         ProposedForTheReply,
         Result,
         outcomeOfProposedActionToJson;
-import 'package:is_effects/is_effects.dart'
-    show FileText, Ran, RelativePath, Wrote;
+import 'package:is_file_request_vocabulary/is_file_request_vocabulary.dart'
+    show FileText, Wrote;
+import 'package:is_outcome_vocabulary/is_outcome_vocabulary.dart' show Ran;
+import 'package:is_relative_path_vocabulary/is_relative_path_vocabulary.dart'
+    show RelativePath;
 import 'package:is_shapes/is_shapes.dart' show EntryId;
 import 'package:test/test.dart';
 
