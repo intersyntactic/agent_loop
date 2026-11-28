@@ -22,7 +22,7 @@ import 'package:is_web_address_vocabulary/is_web_address_vocabulary.dart'
     show Origin, WebPath;
 import 'package:is_model_vocabulary/is_model_vocabulary.dart'
     show ToolFailed, ToolName, ToolRan, ToolRefused, ToolResult;
-import 'package:is_tools_api/is_tools_api.dart'
+import 'package:is_tool_definition_vocabulary/is_tool_definition_vocabulary.dart'
     show Fetch, Input, OneActionTool;
 import 'package:test/test.dart';
 

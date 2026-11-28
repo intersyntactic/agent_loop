@@ -33,7 +33,8 @@ import 'package:is_model_vocabulary/is_model_vocabulary.dart'
         ToolResult,
         WellFormedName;
 
-import 'package:is_tools_api/is_tools_api.dart' show OneActionTool;
+import 'package:is_tool_definition_vocabulary/is_tool_definition_vocabulary.dart'
+    show OneActionTool;
 
 /// [tools] as the model is shown them: name, description and input schema
 /// only. A tool's action, such as the address it fetches and who it goes

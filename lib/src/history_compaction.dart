@@ -20,7 +20,8 @@ import 'package:is_airlock_api/is_airlock_api.dart'
 import 'package:is_logbook_client/is_logbook_client.dart' show ObjectId;
 import 'package:is_model_vocabulary/is_model_vocabulary.dart'
     show FinishedReply, ModelTurn, ToolName, UserSaid;
-import 'package:is_tools_api/is_tools_api.dart' show OneActionTool;
+import 'package:is_tool_definition_vocabulary/is_tool_definition_vocabulary.dart'
+    show OneActionTool;
 
 import 'trajectory_history.dart';
 

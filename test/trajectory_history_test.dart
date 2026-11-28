@@ -37,13 +37,11 @@ import 'package:is_model_vocabulary/is_model_vocabulary.dart'
 import 'package:is_sign_in_vocabulary/is_sign_in_vocabulary.dart' show SignIn;
 import 'package:is_web_address_vocabulary/is_web_address_vocabulary.dart'
     show AddressPrefix, Origin, PathPrefix, WebPath;
-import 'package:is_conversation_shapes/is_conversation_shapes.dart'
-    show SourceMessageId, UserSaid;
+import 'package:is_conversation_vocabulary/is_conversation_vocabulary.dart'
+    show RepliesUnderWebAddress, SourceMessageId, UserSaid;
 import 'package:is_model_vocabulary/is_model_vocabulary.dart'
     show ToolFailed, ToolName, ToolRan, ToolRefused;
 import 'package:checked_json/checked_json.dart' show JsonObject;
-import 'package:is_conversation_reply_vocabulary/is_conversation_reply_vocabulary.dart'
-    show RepliesUnderWebAddress;
 import 'package:is_docking_station_api/is_docking_station_api.dart';
 import 'package:is_flight_rules/is_flight_rules.dart'
     show FlightRules, ProgramsNetwork, WhatMayLeaveThisMachine;
@@ -53,7 +51,7 @@ import 'package:is_logbook_client/is_logbook_client.dart' show LogbookReader;
 import 'package:is_logbook_client/is_logbook_client.dart' as client;
 import 'package:is_shapes/is_shapes.dart'
     show ActorId, DecidedBy, EntryId, TrajectoryId;
-import 'package:is_tools_api/is_tools_api.dart'
+import 'package:is_tool_definition_vocabulary/is_tool_definition_vocabulary.dart'
     show Fetch, Input, OneActionTool;
 import 'package:test/test.dart';
 
