@@ -27,7 +27,7 @@ import 'package:is_model_vocabulary/is_model_vocabulary.dart' show ModelUsage;
 import 'package:is_sign_in_vocabulary/is_sign_in_vocabulary.dart' show SignIn;
 import 'package:is_web_address_vocabulary/is_web_address_vocabulary.dart'
     show AddressPrefix, Origin, PathPrefix;
-import 'package:is_conversation_reply_vocabulary/is_conversation_reply_vocabulary.dart'
+import 'package:is_conversation_vocabulary/is_conversation_vocabulary.dart'
     show
         RepliesInSlackConversation,
         RepliesUnderWebAddress,

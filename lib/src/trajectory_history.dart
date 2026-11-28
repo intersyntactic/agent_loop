@@ -41,7 +41,7 @@ import 'package:is_docking_station_api/is_docking_station_api.dart'
         MessageSaid,
         StartsTrajectory,
         decodeDecision;
-import 'package:is_conversation_reply_vocabulary/is_conversation_reply_vocabulary.dart'
+import 'package:is_conversation_vocabulary/is_conversation_vocabulary.dart'
     show ReplyEndpoint;
 import 'package:checked_json/checked_json.dart' show JsonObject;
 import 'package:is_flight_rules/is_flight_rules.dart' show FlightRules;
@@ -79,7 +79,8 @@ import 'package:is_model_vocabulary/is_model_vocabulary.dart'
         ToolResult,
         UserSaid;
 import 'package:is_shapes/is_shapes.dart' show ActorId, EntryId, TrajectoryId;
-import 'package:is_tools_api/is_tools_api.dart' show OneActionTool;
+import 'package:is_tool_definition_vocabulary/is_tool_definition_vocabulary.dart'
+    show OneActionTool;
 
 import 'history_compaction.dart'
     show HistorySummaryAsked, replyOverTheLine, requestWindow;

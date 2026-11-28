@@ -73,7 +73,8 @@ import 'package:is_flight_rules/is_flight_rules.dart'
 import 'package:is_logbook_client/is_logbook_client.dart'
     show LogbookReader, ObjectId;
 import 'package:is_shapes/is_shapes.dart' show EntryId;
-import 'package:is_tools_api/is_tools_api.dart' show OneActionTool;
+import 'package:is_tool_definition_vocabulary/is_tool_definition_vocabulary.dart'
+    show OneActionTool;
 
 /// A fixed, labelled placeholder for the system prompt: enough to exercise
 /// recording for real, not what a demo's system prompt will actually say.

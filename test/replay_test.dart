@@ -33,7 +33,7 @@ import 'package:is_model_vocabulary/is_model_vocabulary.dart'
         ToolResult,
         UserSaid;
 import 'package:is_shapes/is_shapes.dart' show ActorId;
-import 'package:is_tools_api/is_tools_api.dart'
+import 'package:is_tool_definition_vocabulary/is_tool_definition_vocabulary.dart'
     show Fetch, Input, OneActionTool;
 import 'package:test/test.dart';
 
