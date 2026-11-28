@@ -135,6 +135,7 @@ void main() {
           text: 'hey are you there',
         ),
         conversationKind: ConversationKind.oneToOne,
+        forTheAgent: WhetherForTheAgent.mentionsTheAgent,
       ),
       placement: OnTrajectory(TrajectoryId.parse('a1' * 32)!),
       startsTurn: true,
@@ -183,8 +184,8 @@ void main() {
     ]);
   });
 
-  test('reads an admitted message written before conversationKind existed, '
-      'as the live log holds them', () {
+  test('reads an admitted message written before conversationKind and '
+      'forTheAgent existed, as the live log holds them', () {
     final (kind, body) = encodeDecision(
       EventAdmittedToMission(
         client.ObjectId.of(Uint8List.fromList(utf8.encode('raw event'))),
@@ -201,6 +202,7 @@ void main() {
             text: 'written by an older docking station',
           ),
           conversationKind: ConversationKind.oneToOne,
+          forTheAgent: WhetherForTheAgent.mentionsTheAgent,
         ),
         placement: OnTrajectory(TrajectoryId.parse('a1' * 32)!),
         startsTurn: true,
@@ -210,7 +212,9 @@ void main() {
     final json = jsonDecode(utf8.decode(body)) as Map<String, Object?>;
     // cast-ok: as above.
     final event = json['translatedEvent'] as Map<String, Object?>;
+    expect(json.remove('decisionFormat'), 1);
     expect(event.remove('conversationKind'), 'one-to-one');
+    expect(event.remove('forTheAgent'), isA<String>());
     final older = Uint8List.fromList(utf8.encode(jsonEncode(json)));
 
     expect(
@@ -223,6 +227,11 @@ void main() {
               (m) => m.conversationKind,
               'conversationKind',
               ConversationKind.notKnown,
+            )
+            .having(
+              (m) => m.forTheAgent,
+              'forTheAgent',
+              WhetherForTheAgent.notKnown,
             )
             .having((m) => m.node.text, 'text', contains('older')),
       ),
@@ -288,6 +297,7 @@ void main() {
                 text: text,
               ),
               conversationKind: ConversationKind.oneToOne,
+              forTheAgent: WhetherForTheAgent.mentionsTheAgent,
             ),
             placement: rules == null
                 ? OnTrajectory(TrajectoryId.parse('a1' * 32)!)
